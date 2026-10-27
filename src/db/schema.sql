@@ -247,7 +247,7 @@ CREATE TABLE IF NOT EXISTS rate_policies (
 CREATE TABLE IF NOT EXISTS revenue_allocations (
   id        INTEGER PRIMARY KEY,
   order_id  INTEGER NOT NULL REFERENCES orders(id),
-  role      TEXT NOT NULL CHECK (role IN ('REFERRER', 'SALES', 'ACCOUNT', 'PM', 'PROJECT', 'MT')),
+  role      TEXT NOT NULL CHECK (role IN ('REFERRER', 'SALES', 'ACCOUNT', 'PM', 'PROJECT', 'DEV', 'MT')),
   rate_bp   INTEGER NOT NULL CHECK (rate_bp BETWEEN 0 AND 10000),
   policy_id INTEGER REFERENCES rate_policies(id),
   locked_at TEXT NOT NULL DEFAULT (datetime('now')),
@@ -320,6 +320,12 @@ CREATE TABLE IF NOT EXISTS audit_logs (
   after_json  TEXT,
   reason      TEXT,
   created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- Cấu hình hệ thống dạng key/value (vd. dev_user_id: người nhận phần Coder web)
+CREATE TABLE IF NOT EXISTS settings (
+  key   TEXT PRIMARY KEY,
+  value TEXT NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS sessions (

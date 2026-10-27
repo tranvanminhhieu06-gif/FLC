@@ -34,6 +34,7 @@ Danh sách đầy đủ nằm ở đầu tệp [scripts/seed.js](scripts/seed.js
 | M&T Admin | `admin@flc.local` | Mật khẩu là biến `FLC_ADMIN_PASSWORD`, hoặc giá trị mặc định ghi trong seed.js |
 | Khách hàng | `khach.an@demo.local`, `khach.binh@demo.local` | `khach.moi@…` đang chờ duyệt |
 | Freelancer | `referrer@`, `sales@`, `account@`, `pm@`, `project1@`, `project2@` (`@demo.local`) | `da.vai.tro@…` (Referrer + Sales) đang chờ duyệt |
+| Coder web | `coder@demo.local` | Nhận 4% trên mọi Order. Xem tại trang *Doanh thu & dự án* |
 
 Dữ liệu demo có sẵn các Order ở các giai đoạn khác nhau:
 
@@ -54,7 +55,7 @@ Dữ liệu demo có sẵn các Order ở các giai đoạn khác nhau:
 | `npm start` | Chạy server (cổng `PORT`, mặc định 3000) |
 | `npm run dev` | Chạy và tự khởi động lại khi sửa code (`node --watch`) |
 | `npm run seed -- --reset` | Xóa CSDL và tệp đã tải lên, rồi tạo lại dữ liệu demo |
-| `npm test` | 14 bài kiểm thử: thuật toán hoa hồng và các quy tắc hệ thống |
+| `npm test` | 19 bài kiểm thử: thuật toán hoa hồng, doanh thu thuần, bảng tỷ lệ và các quy tắc hệ thống |
 
 ## Cấu trúc
 
@@ -69,7 +70,8 @@ src/
     assignment.js      Tiếp nhận, mời, nhận/từ chối, duyệt & khóa phân công
     orders.js          Order, báo giá, hợp đồng, nhiệm vụ, bàn giao, nghiệm thu
     finance.js         Khai báo / xác nhận thực thu, hoàn tiền, tự chuyển bước theo tiền
-    commission.js      computeLines() (hàm thuần), đối soát, duyệt, chi trả, tỷ lệ
+    commission.js      Đối soát, duyệt, chi trả, tỷ lệ, người nhận Coder web
+    revenue.js         Doanh thu & thu nhập theo từng dự án của freelancer
     access.js          Ai được xem Order nào, phần nào
     files.js           Upload vào storage/private + quyền tải (file gốc / demo / CCCD)
     accounts.js        Đăng ký, đăng nhập, M&T duyệt tài khoản & vai trò
@@ -78,6 +80,7 @@ src/
   lib/                 labels (nhãn + màu trạng thái), fmt, password (scrypt), icons, session-store
 views/                 EJS — order/show.ejs là trang Order dùng chung cho mọi vai trò
 public/css/flc.css     Design system (token + component)
+public/js/revenue-core.js  ★ Công thức doanh thu thuần + chia hoa hồng, dùng chung cho server và trình duyệt
 docs/                  SYSTEM_DESIGN.md · DESIGN_SYSTEM.md
 test/                  node:test
 ```
@@ -101,7 +104,9 @@ test/                  node:test
 | Không để hai người cùng nhận một vị trí độc quyền | `assignment.respond` + transaction `BEGIN IMMEDIATE` |
 | Order phải có người phụ trách chính và người dự phòng | Account là phụ trách chính. M&T là dự phòng mặc định và có thể thu hồi hoặc thay người |
 | Freelancer chỉ xem thông tin cần thiết; quyền bị thu hồi khi Order đóng | `access.forOrder` (thông tin liên hệ khách chỉ hiện với Sales/Account, thông tin hóa đơn chỉ hiện với Admin) |
-| Phân biệt hoa hồng dự kiến và khoản thực trả | `commission.estimateFor` chỉ tính để hiển thị, không ghi vào sổ |
+| Phân biệt hoa hồng dự kiến và khoản thực trả | `revenue.forUser` (trang `/fl/revenue`) chỉ tính để hiển thị. Khoản thực trả nằm ở sổ `commissions` (trang `/fl/earnings`) |
+| Bộ tính và đối soát dùng cùng một công thức | `public/js/revenue-core.js` được dùng chung cho cả server lẫn trình duyệt |
+| Phần Coder web 4% tính trên mọi Order | `commission.lockedHolders` thêm `DEV` từ `settings.dev_user_id`. Chưa cấu hình thì M&T giữ lại |
 
 ## Bảo mật đã có
 
@@ -127,7 +132,7 @@ Code đang chạy theo các giả định dưới đây. Mỗi giả định n�
 1. **Phân công:** Account mời theo năng lực, người chấp nhận trước giữ chỗ (với PM). Sales nhận Order theo kiểu ai nhận trước được trước.
 2. **Dòng tiền:** khách trả cho M&T, M&T chi lại cho freelancer.
 3. **Hoa hồng:** tính theo từng đợt thực thu, trên doanh thu thuần.
-4. **Tỷ lệ mặc định:** Referrer 5 · Sales 10 · Account 10 · PM 10 · Project 50 · M&T 15 (%). Chỉnh tại `/admin/rates`.
+4. **Tỷ lệ (đã chốt, bảng "Full"):** Referrer 5 · Sales 10 · Account 5 · PM 10 · Project 40 · Coder web 4 · M&T 26 (%). Chỉnh tỷ lệ và chọn người nhận phần Coder web tại `/admin/rates`.
 5. **"Chuẩn ECO":** hiện được hiểu là hệ sinh thái nhiều vai trò, kết hợp giao diện nhẹ.
 
 ## Chưa có trong MVP (lộ trình V2/V3)

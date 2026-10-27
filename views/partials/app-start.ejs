@@ -25,7 +25,8 @@
     if (r.has('SALES') || r.has('ACCOUNT')) items.push({ href: '/fl/opportunities', icon: 'target', text: 'Cơ hội' });
     if (r.size) items.push({ href: '/fl/invitations', icon: 'inbox', text: 'Lời mời' });
     if (r.has('REFERRER')) items.push({ href: '/fl/referrals', icon: 'link', text: 'Giới thiệu' });
-    items.push({ href: '/fl/earnings', icon: 'wallet', text: 'Thu nhập' });
+    items.push({ href: '/fl/revenue', icon: 'chart', text: 'Doanh thu & dự án' });
+    items.push({ href: '/fl/earnings', icon: 'wallet', text: 'Sổ hoa hồng' });
     items.push({ href: '/fl/profile', icon: 'user', text: 'Hồ sơ năng lực' });
     groups = [{ label: 'Freelancer Portal', items }];
   } else {

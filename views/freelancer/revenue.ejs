@@ -1,0 +1,149 @@
+<%- include('../partials/app-start') %>
+<%
+  const T = data.totals;
+  const rates = data.policy;
+  const closed = (s) => ['CLOSED', 'CANCELLED'].includes(s);
+  const moneyInput = (name, label, value, hint) => ({ name, label, value: value ? fmt.num(value) : '', attrs: 'inputmode="numeric" data-money data-calc', hint });
+%>
+<div class="page-head">
+  <div>
+    <h1>Doanh thu &amp; dự án</h1>
+    <p class="muted">Tự động tính phần bạn được hưởng trên <strong>doanh thu thuần</strong> của từng dự án đã nhận. Đây là số ước tính: khoản được trả là các dòng trong <a href="/fl/earnings">Sổ hoa hồng</a> sau khi M&amp;T đối soát.</p>
+  </div>
+</div>
+
+<div class="grid grid-4" style="margin-bottom: var(--sp-6)">
+  <div class="stat"><div class="stat-label">Dự án đã nhận</div><div class="stat-value"><%= T.projects %></div><div class="stat-sub"><%= T.active %> đang thực hiện</div></div>
+  <div class="stat"><div class="stat-label">Theo thực thu</div><div class="stat-value" style="font-size:var(--fs-xl)"><%= fmt.vnd(T.earned) %></div><div class="stat-sub">Trên doanh thu thuần khách đã trả</div></div>
+  <div class="stat"><div class="stat-label">Dự kiến còn lại</div><div class="stat-value" style="font-size:var(--fs-xl)"><%= fmt.vnd(T.remaining) %></div><div class="stat-sub">Khi khách trả đủ các dự án đang làm</div></div>
+  <div class="stat"><div class="stat-label">Đã duyệt · chờ chi</div><div class="stat-value" style="font-size:var(--fs-xl); color: var(--c-brand-700)"><%= fmt.vnd(T.approved) %></div><div class="stat-sub">Chờ duyệt <%= fmt.vnd(T.pending) %></div></div>
+  <div class="stat"><div class="stat-label">Đã nhận</div><div class="stat-value" style="font-size:var(--fs-xl)"><%= fmt.vnd(T.paid) %></div><div class="stat-sub"><%= T.unreconciled ? 'Chưa đối soát ' + fmt.vnd(T.unreconciled) : 'Đã đối soát hết' %></div></div>
+</div>
+
+<!-- Danh sách dự án đã nhận -->
+<section class="card flush" style="margin-bottom: var(--sp-6)" id="projects">
+  <div class="card-head"><h2>Dự án đã nhận</h2><span class="small muted">Tỷ lệ hưởng = Σ (tỷ lệ vai trò × tỷ lệ phân công)</span></div>
+  <% if (!data.rows.length) { %>
+    <div class="empty"><%- icon('briefcase') %><p>Bạn chưa nhận dự án nào. <% if (user.status !== 'ACTIVE') { %>Tài khoản cần được M&amp;T duyệt trước.<% } else if (user.roles.includes('SALES') || user.roles.includes('ACCOUNT')) { %><a href="/fl/opportunities">Xem cơ hội</a><% } else { %>Lời mời sẽ hiện ở mục <a href="/fl/invitations">Lời mời</a>.<% } %></p></div>
+  <% } else { %>
+  <div class="table-wrap"><table class="table">
+    <thead><tr>
+      <th>Dự án</th><th>Vai trò của bạn</th><th class="num">Giá trị HĐ</th><th class="num">Thuần đã thu</th>
+      <th class="num">Tỷ lệ hưởng</th><th class="num">Theo thực thu</th><th class="num">Dự kiến cả HĐ</th><th class="num">Sổ hoa hồng</th>
+    </tr></thead>
+    <tbody>
+      <% for (const r of data.rows) { %>
+        <tr>
+          <td>
+            <% if (closed(r.status)) { %><span class="mono"><%= r.code %></span><% } else { %><a class="mono" href="/orders/<%= r.id %>"><%= r.code %></a><% } %>
+            <%= r.project_code ? '· ' + r.project_code : '' %>
+            <div><strong><%= r.title %></strong></div>
+            <%- badge(L.ORDER_STATUS, r.status) %>
+          </td>
+          <td class="small">
+            <% for (const ro of r.roles) { %>
+              <div><span class="tag"><%= L.ROLES[ro.role].label %></span> <%= fmt.pct(ro.rate) %><%= ro.share < 10000 ? ' × ' + fmt.pct(ro.share) : '' %><%= ro.pmIncluded ? ' (gồm phần PM)' : '' %></div>
+            <% } %>
+            <% if (!r.roles.length) { %><span class="muted">Đã kết thúc phân công</span><% } %>
+            <% if (!r.locked && r.roles.length) { %><div class="muted">Tạm tính — chưa khóa tỷ lệ</div><% } %>
+          </td>
+          <td class="num"><%= fmt.vnd(r.value) %></td>
+          <td class="num"><%= fmt.vnd(r.net) %><% if (r.collected) { %><div class="small muted">thu <%= fmt.short(r.collected) %></div><% } %></td>
+          <td class="num"><strong><%= fmt.pct(Math.round(r.effBp * 100) / 100) %></strong></td>
+          <td class="num"><%= fmt.vnd(r.earned) %></td>
+          <td class="num"><%= fmt.vnd(r.expected) %><% if (r.assumed && r.expected) { %><div class="small muted" title="Chưa có khoản thu: ước tính giá đã gồm VAT <%= L.DEFAULT_VAT_PCT %>%">ước tính VAT <%= L.DEFAULT_VAT_PCT %>%</div><% } %></td>
+          <td class="num small">
+            <% if (r.paid) { %><div>Đã chi <strong><%= fmt.num(r.paid) %></strong></div><% } %>
+            <% if (r.approved) { %><div>Đã duyệt <%= fmt.num(r.approved) %></div><% } %>
+            <% if (r.pending) { %><div class="muted">Chờ duyệt <%= fmt.num(r.pending) %></div><% } %>
+            <% if (r.unreconciled) { %><div class="muted">Chưa đối soát <%= fmt.num(r.unreconciled) %></div><% } %>
+            <% if (!r.paid && !r.approved && !r.pending && !r.unreconciled) { %><span class="muted">—</span><% } %>
+          </td>
+        </tr>
+      <% } %>
+    </tbody>
+    <tfoot><tr>
+      <td colspan="5">Tổng <%= T.projects %> dự án</td>
+      <td class="num"><%= fmt.vnd(T.earned) %></td><td class="num"><%= fmt.vnd(T.expected) %></td><td class="num"><%= fmt.vnd(T.pending + T.approved + T.paid) %></td>
+    </tr></tfoot>
+  </table></div>
+  <% } %>
+</section>
+
+<!-- Bộ tính tự động -->
+<section class="card" id="calculator">
+  <div class="card-head"><h2>Bộ tính doanh thu tự động</h2><span class="small muted">Theo chính sách hiện hành — kết quả cập nhật ngay khi bạn nhập</span></div>
+  <form class="split" method="get" action="/fl/revenue#calculator" id="calc-form">
+    <div>
+      <fieldset>
+        <legend>Doanh thu &amp; giảm trừ doanh thu</legend>
+        <%- include('../partials/field', moneyInput('gross', 'Doanh thu (số tiền khách thanh toán)', input.gross)) %>
+        <div class="form-grid">
+          <%- include('../partials/field', moneyInput('discount', 'Chiết khấu thương mại', input.discount)) %>
+          <%- include('../partials/field', moneyInput('allowance', 'Giảm giá hàng bán', input.allowance)) %>
+          <%- include('../partials/field', moneyInput('returns', 'Hàng bán bị trả lại', input.returns)) %>
+        </div>
+      </fieldset>
+      <fieldset>
+        <legend>Thuế gián thu</legend>
+        <div class="form-grid">
+          <%- include('../partials/field', { name: 'vat_pct', label: 'Thuế GTGT (%)', type: 'number', value: input.vatPct, attrs: 'min="0" max="100" step="0.1" data-calc' }) %>
+          <div class="field"><span class="label">&nbsp;</span><label class="check"><input type="checkbox" name="vat_included" value="1" data-calc <%- input.vatIncluded ? 'checked' : '' %>> Số tiền đã gồm VAT</label></div>
+          <%- include('../partials/field', moneyInput('excise', 'Thuế tiêu thụ đặc biệt', input.excise)) %>
+          <%- include('../partials/field', moneyInput('export_tax', 'Thuế xuất khẩu', input.exportTax)) %>
+        </div>
+      </fieldset>
+      <fieldset>
+        <legend>Tình huống</legend>
+        <div class="checks">
+          <label class="check"><input type="checkbox" name="has_referrer" value="1" data-calc <%- opts.hasReferrer ? 'checked' : '' %>> Có người giới thiệu</label>
+          <label class="check"><input type="checkbox" name="has_pm" value="1" data-calc <%- opts.hasPm ? 'checked' : '' %>> Có PM</label>
+        </div>
+        <% if (myRoles.includes('PROJECT')) { %>
+          <%- include('../partials/field', { name: 'my_share', label: 'Tỷ lệ phân công của bạn trong Project (%)', type: 'number', value: myShare, attrs: 'min="1" max="100" step="0.01" data-calc', hint: 'Khi nhiều Project cùng làm, phần 40% chia theo tỷ lệ này' }) %>
+        <% } %>
+        <% if (!opts.hasDev) { %><p class="small muted">Chưa cấu hình người nhận phần Coder web — phần này đang về M&amp;T.</p><% } %>
+      </fieldset>
+      <noscript><button class="btn btn-primary">Tính</button></noscript>
+    </div>
+
+    <div class="stack">
+      <dl class="kv card" style="background: var(--c-n-50)">
+        <dt>Doanh thu</dt><dd class="num" id="out-gross"><%= fmt.vnd(sim.gross) %></dd>
+        <dt>− Giảm trừ doanh thu</dt><dd class="num" id="out-deductions"><%= fmt.vnd(sim.deductions) %></dd>
+        <dt>− Thuế GTGT</dt><dd class="num" id="out-vat"><%= fmt.vnd(sim.vat) %></dd>
+        <dt>− Thuế TTĐB, xuất khẩu</dt><dd class="num" id="out-other"><%= fmt.vnd(sim.otherTax) %></dd>
+        <dt><strong>= Doanh thu thuần</strong></dt><dd class="num"><strong id="out-net"><%= fmt.vnd(sim.net) %></strong></dd>
+      </dl>
+      <div class="stat" style="background: var(--c-brand-50); border-color: var(--c-brand-200)" role="status" aria-live="polite">
+        <div class="stat-label">Phần của bạn</div>
+        <div class="stat-value" style="color: var(--c-brand-800)" id="out-mine"><%= fmt.vnd(sim.mine) %></div>
+        <div class="stat-sub">Vai trò: <%= myRoles.length ? myRoles.map((r) => L.ROLES[r].label).join(', ') : 'chưa được cấp' %></div>
+      </div>
+      <div class="table-wrap"><table class="table" id="out-table">
+        <thead><tr><th>Phần chia</th><th class="num">Tỷ lệ</th><th class="num">Số tiền</th></tr></thead>
+        <tbody>
+          <% for (const k of L.RATE_KEYS) { const g = groups[k]; %>
+            <tr data-role="<%= k %>" <%- myRoles.includes(k) ? 'style="background: var(--c-brand-50)"' : '' %>>
+              <td><strong><%= L.ROLES[k].label %><%= k === 'DEV' && devName ? ' – ' + devName : '' %></strong><%= myRoles.includes(k) ? ' · bạn' : '' %>
+                <div class="small muted" data-reason><%= g.reason || '' %></div></td>
+              <td class="num"><%= fmt.pct(rates[k]) %></td>
+              <td class="num" data-amount><%= fmt.vnd(g.amount) %></td>
+            </tr>
+          <% } %>
+        </tbody>
+        <tfoot><tr><td>Tổng</td><td class="num"><%= fmt.pct(L.RATE_KEYS.reduce((s, k) => s + (rates[k] || 0), 0)) %></td><td class="num" id="out-total"><%= fmt.vnd(sim.net) %></td></tr></tfoot>
+      </table></div>
+    </div>
+  </form>
+  <details class="disclose" style="margin-top: var(--sp-4)">
+    <summary>Công thức</summary>
+    <p class="small"><strong>Doanh thu thuần</strong> = Doanh thu − (chiết khấu thương mại + giảm giá hàng bán + hàng bán bị trả lại) − thuế gián thu (GTGT, tiêu thụ đặc biệt, xuất khẩu).
+      Nếu số tiền đã gồm VAT: VAT = (doanh thu sau giảm trừ) × r ÷ (1 + r).</p>
+    <p class="small"><strong>Phần của bạn</strong> = Doanh thu thuần × tỷ lệ vai trò × tỷ lệ phân công. Không có người giới thiệu → 5% về M&amp;T. Không có PM → Account nhận thêm phần PM. Phần lẻ do làm tròn về M&amp;T.</p>
+  </details>
+</section>
+<script type="application/json" id="calc-data"><%- calcJson %></script>
+<script src="/static/js/revenue-core.js" defer></script>
+<script src="/static/js/revenue-calc.js" defer></script>
+<%- include('../partials/app-end') %>

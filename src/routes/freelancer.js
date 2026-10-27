@@ -4,6 +4,9 @@ const db = require('../db');
 const assignment = require('../services/assignment');
 const commission = require('../services/commission');
 const accounts = require('../services/accounts');
+const revenue = require('../services/revenue');
+const fmt = require('../lib/fmt');
+const { DEFAULT_VAT_PCT } = require('../lib/labels');
 const { fail, notifyAdmins } = require('../services/core');
 const { requireKind, requireActive, act } = require('../middleware');
 
@@ -25,7 +28,7 @@ router.get('/', (req, res) => {
             COALESCE(SUM(CASE WHEN status = 'PAID' THEN amount END), 0) AS paid
        FROM commissions WHERE user_id = ?`, u.id,
   );
-  const estimate = commission.estimateFor(u.id).reduce((s, r) => s + (r.estimate || 0), 0);
+  const estimate = revenue.forUser(u.id).totals.remaining;
   const tasks = db.all(
     "SELECT t.*, o.code FROM tasks t JOIN orders o ON o.id = t.order_id WHERE t.assignee_id = ? AND t.status <> 'DONE' AND o.status NOT IN ('CLOSED','CANCELLED') ORDER BY t.due_date IS NULL, t.due_date LIMIT 8", u.id,
   );
@@ -78,8 +81,38 @@ router.get('/earnings', (req, res) => {
       WHERE c.user_id = ? ORDER BY c.id DESC`, req.user.id,
   );
   const payouts = db.all('SELECT * FROM payouts WHERE user_id = ? ORDER BY id DESC', req.user.id);
-  const estimates = commission.estimateFor(req.user.id);
-  res.render('freelancer/earnings', { title: 'Thu nhập & hoa hồng', lines, payouts, estimates });
+  res.render('freelancer/earnings', { title: 'Sổ hoa hồng', lines, payouts });
+});
+
+/** Doanh thu & dự án đã nhận + bộ tính tự động (form GET hoạt động cả khi tắt JS) */
+router.get('/revenue', (req, res) => {
+  const data = revenue.forUser(req.user.id);
+  const devId = commission.devUserId();
+  const myRoles = [...req.user.roles, ...(devId === req.user.id ? ['DEV'] : [])];
+  const q = req.query;
+  const submitted = q.gross !== undefined;
+  const money = (v) => fmt.parseMoney(v) || 0;
+  const sampleValue = data.rows.find((r) => r.value && !['CLOSED', 'CANCELLED'].includes(r.status))?.value || 10_000_000;
+  const input = {
+    gross: submitted ? money(q.gross) : sampleValue,
+    discount: money(q.discount), allowance: money(q.allowance), returns: money(q.returns),
+    vatPct: submitted && q.vat_pct !== '' ? Math.max(0, Number(q.vat_pct) || 0) : DEFAULT_VAT_PCT,
+    vatIncluded: submitted ? q.vat_included === '1' : true,
+    excise: money(q.excise), exportTax: money(q.export_tax),
+  };
+  const opts = {
+    hasReferrer: submitted ? q.has_referrer === '1' : true,
+    hasPm: submitted ? q.has_pm === '1' : true,
+    hasDev: !!devId,
+  };
+  const myShare = Math.min(100, Math.max(1, Number(q.my_share) || 100));
+  const sim = revenue.simulate({ input, rates: data.policy, myRoles, myShareBp: Math.round(myShare * 100), ...opts });
+  res.render('freelancer/revenue', {
+    title: 'Doanh thu & dự án', data, sim, groups: revenue.byRole(sim.lines), input, opts, myRoles, myShare,
+    devName: devId ? db.get('SELECT full_name FROM users WHERE id = ?', devId).full_name : null,
+    // Dữ liệu cho bộ tính trên trình duyệt (JSON trong thẻ script không chạy, an toàn với CSP)
+    calcJson: JSON.stringify({ rates: data.policy, myRoles, hasDev: opts.hasDev }).replace(/</g, '\\u003c'),
+  });
 });
 
 router.get('/referrals', requireActive, (req, res) => {

@@ -9,6 +9,7 @@
  *   Mọi tài khoản demo khác             / mật khẩu "Demo@12345"
  *   Customer: khach.an@demo.local, khach.binh@demo.local, khach.moi@demo.local (chờ duyệt)
  *   Freelancer: referrer@ · sales@ · account@ · pm@ · project1@ · project2@ · da.vai.tro@ (chờ duyệt)  (@demo.local)
+ *   Coder web (nhận 4% mọi Order): coder@demo.local
  */
 const fs = require('node:fs');
 const path = require('node:path');
@@ -52,7 +53,7 @@ const adminId = db.tx(() => db.run(
   nextCode('MT'), password.hash(ADMIN_PASS),
 ).lastInsertRowid);
 const admin = { id: adminId, kind: 'admin' };
-commission.setPolicy({ adminId, name: 'Chính sách chuẩn 2026', rates: DEFAULT_RATES, reason: 'Khởi tạo' });
+commission.setPolicy({ adminId, name: 'Bảng Full 2026 (có Coder web 4%)', rates: DEFAULT_RATES, reason: 'Khởi tạo theo bảng tỷ lệ M&T' });
 
 // --- Freelancer ---
 function freelancer(key, fullName, roles, extra = {}) {
@@ -73,12 +74,14 @@ const fl = {
   p1: freelancer('project1', 'Võ Hoàng Em', ['PROJECT'], { phone: '0901000005', skills: 'Next.js, Node.js, thiết kế website' }),
   p2: freelancer('project2', 'Đặng Gia Phúc', ['PROJECT'], { phone: '0901000006', skills: 'Figma, UI/UX, thiết kế đồ họa, nhận diện', services: ['Thiết kế đồ họa & nhận diện', 'Thiết kế website'] }),
   multi: freelancer('da.vai.tro', 'Bùi Ngọc Giang', ['REFERRER', 'SALES'], { phone: '0901000007', member: 'giang.multi', skills: 'Bán hàng B2B' }),
+  coder: freelancer('coder', 'Hiếu', ['PROJECT'], { phone: '0901000008', member: 'hieu.coder', skills: 'Node.js, xây dựng nền tảng FLC' }),
 };
 for (const [k, id] of Object.entries(fl)) {
   if (k === 'multi') continue;
   const roles = db.all('SELECT role FROM user_roles WHERE user_id = ?', id).map((r) => r.role);
   accounts.review(id, adminId, { decision: 'approve', roles });
 }
+commission.setDevUser({ adminId, userId: fl.coder, reason: 'Người xây dựng nền tảng' });
 
 // --- Khách hàng ---
 function customer(key, name, extra = {}) {

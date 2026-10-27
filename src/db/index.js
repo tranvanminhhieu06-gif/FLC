@@ -9,6 +9,22 @@ if (DB_PATH !== ':memory:') fs.mkdirSync(path.dirname(DB_PATH), { recursive: tru
 const db = new DatabaseSync(DB_PATH);
 db.exec('PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 5000;');
 db.exec(fs.readFileSync(path.join(__dirname, 'schema.sql'), 'utf8'));
+migrate();
+
+/** Nâng cấp CSDL đã tạo bằng schema cũ (SQLite không sửa được CHECK → dựng lại bảng) */
+function migrate() {
+  const ra = db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'revenue_allocations'").get();
+  if (ra && !ra.sql.includes("'DEV'")) {
+    // Lấy định nghĩa mới từ schema.sql để không lặp lại cấu trúc bảng
+    const schema = fs.readFileSync(path.join(__dirname, 'schema.sql'), 'utf8');
+    const createSql = schema.match(/CREATE TABLE IF NOT EXISTS revenue_allocations \([\s\S]*?\n\);/)[0];
+    db.exec('PRAGMA foreign_keys = OFF; BEGIN;');
+    db.exec('ALTER TABLE revenue_allocations RENAME TO revenue_allocations_v1;');
+    db.exec(createSql);
+    db.exec('INSERT INTO revenue_allocations SELECT * FROM revenue_allocations_v1; DROP TABLE revenue_allocations_v1;');
+    db.exec('COMMIT; PRAGMA foreign_keys = ON;');
+  }
+}
 
 const cache = new Map();
 function stmt(sql) {

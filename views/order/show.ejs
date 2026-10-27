@@ -6,7 +6,7 @@
   const currentQuote = quotes.find((q) => q.status === 'SENT');
   const locked = assignments.filter((a) => a.status === 'LOCKED');
   const live = assignments.filter((a) => ['ACCEPTED', 'LOCKED'].includes(a.status));
-  const RATE_KEYS = ['REFERRER', 'SALES', 'ACCOUNT', 'PM', 'PROJECT', 'MT'];
+  const RATE_KEYS = L.RATE_KEYS;
   const ratesSrc = allocations || policy.rates;
   const pctInput = (bp) => (bp / 100).toString();
   const base = `/orders/${order.id}`;
@@ -292,7 +292,7 @@
           <h3>Duyệt &amp; khóa phương án</h3>
           <p class="small muted">Tỷ lệ dưới đây sẽ được chụp vào Order. Thay đổi chính sách sau này không ảnh hưởng Order này.</p>
           <div class="form-grid" style="grid-template-columns: repeat(3, 1fr)">
-            <% for (const k of RATE_KEYS) { %><div class="field"><label for="ar_<%= k %>"><%= L.ROLES[k].label %> %</label><input class="input" id="ar_<%= k %>" name="rate_<%= k %>" type="number" step="0.01" min="0" max="100" value="<%= pctInput(policy.rates[k]) %>"></div><% } %>
+            <% for (const k of RATE_KEYS) { %><div class="field"><label for="ar_<%= k %>"><%= L.ROLES[k].label %> %</label><input class="input" id="ar_<%= k %>" name="rate_<%= k %>" type="number" step="0.01" min="0" max="100" value="<%= pctInput(policy.rates[k] || 0) %>"></div><% } %>
           </div>
           <button class="btn btn-primary" data-confirm="Khóa danh sách nhân sự và tỷ lệ, tạo nhóm làm việc?">Duyệt &amp; khóa</button>
         </form>

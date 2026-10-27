@@ -40,8 +40,9 @@ test('không có PM → Account nhận phần PM thành dòng riêng', () => {
 
 test('nhiều Project chia theo tỷ lệ phân công', () => {
   const lines = computeLines({ net: 10_000_000, allocations: DEFAULT_RATES, holders, needsPm: true });
-  assert.equal(lines.find((l) => l.userId === 5).amount, 3_000_000);
-  assert.equal(lines.find((l) => l.userId === 6).amount, 2_000_000);
+  const pool = (10_000_000 * DEFAULT_RATES.PROJECT) / 10000;
+  assert.equal(lines.find((l) => l.userId === 5).amount, pool * 0.6);
+  assert.equal(lines.find((l) => l.userId === 6).amount, pool * 0.4);
 });
 
 test('một người nhiều vai trò: mỗi vai trò một dòng, không trùng (beneficiary, role)', () => {
@@ -62,4 +63,33 @@ test('hoàn tiền (net âm) sinh dòng điều chỉnh âm, tổng vẫn khớp
 test('tỷ lệ phải cộng đủ 100%', () => {
   assert.doesNotThrow(() => validateRates(DEFAULT_RATES));
   assert.throws(() => validateRates({ ...DEFAULT_RATES, MT: 1400 }), /100%/);
+});
+
+test('bảng Full: 5 · 10 · 5 · 10 · 40 · Coder web 4 · M&T 26', () => {
+  const lines = computeLines({ net: 100_000_000, allocations: DEFAULT_RATES, holders: { ...holders, DEV: [{ userId: 9, shareBp: 10000 }] }, needsPm: true });
+  const of = (role) => lines.filter((l) => l.role === role).reduce((s, l) => s + l.amount, 0);
+  assert.deepEqual(
+    ['REFERRER', 'SALES', 'ACCOUNT', 'PM', 'PROJECT', 'DEV', 'MT'].map(of),
+    [5_000_000, 10_000_000, 5_000_000, 10_000_000, 40_000_000, 4_000_000, 26_000_000],
+  );
+  assert.equal(lines.find((l) => l.role === 'DEV').userId, 9);
+});
+
+test('chưa cấu hình Coder web → 4% về M&T', () => {
+  const lines = computeLines({ net: 10_000_000, allocations: DEFAULT_RATES, holders, needsPm: true });
+  const dev = lines.find((l) => l.role === 'DEV');
+  assert.equal(dev.beneficiary, 'MT');
+  assert.match(dev.reason, /Coder web/);
+});
+
+test('doanh thu thuần: trừ giảm trừ và VAT đã gồm trong giá', () => {
+  const { netRevenue, simulate } = require('../public/js/revenue-core');
+  // 11.000.000 đã gồm VAT 10%, chiết khấu 1.100.000 → sau giảm trừ 9.900.000 → VAT 900.000 → thuần 9.000.000
+  const r = netRevenue({ gross: 11_000_000, discount: 1_100_000, vatPct: 10, vatIncluded: true });
+  assert.equal(r.vat, 900_000);
+  assert.equal(r.net, 9_000_000);
+  assert.equal(netRevenue({ gross: 10_000_000, vatPct: 10, vatIncluded: false, exportTax: 200_000 }).net, 9_800_000);
+  // Bộ tính: Account không có PM nhận 5% + 10% = 15% doanh thu thuần
+  const s = simulate({ input: { gross: 11_000_000, vatPct: 10 }, rates: DEFAULT_RATES, myRoles: ['ACCOUNT'], hasReferrer: true, hasPm: false, hasDev: true });
+  assert.equal(s.mine, 1_500_000);
 });

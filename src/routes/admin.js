@@ -10,13 +10,12 @@ const orders = require('../services/orders');
 const reports = require('../services/reports');
 const fmt = require('../lib/fmt');
 const { fail } = require('../services/core');
-const { ROLES } = require('../lib/labels');
+const { ROLES, RATE_KEYS } = require('../lib/labels');
 const { requireKind, act } = require('../middleware');
 
 const router = express.Router();
 router.use(requireKind('admin'));
 
-const RATE_KEYS = ['REFERRER', 'SALES', 'ACCOUNT', 'PM', 'PROJECT', 'MT'];
 /** Form nhập % (có thể thập phân) → basis point */
 const readRates = (body) => Object.fromEntries(RATE_KEYS.map((k) => [k, Math.round(Number(String(body[`rate_${k}`] ?? '').replace(',', '.')) * 100)]));
 
@@ -93,7 +92,7 @@ orderAct('reconcile', (req, id) => {
 orderAct('complete', (req, id) => flow.transition(id, 'COMPLETED', req.user.id, 'M&T xác nhận hoàn tất đối soát'), 'Order đã hoàn tất');
 orderAct('close', (req, id) => flow.transition(id, 'CLOSED', req.user.id, 'Đóng Order — thu hồi quyền truy cập workspace của freelancer'), 'Đã đóng Order');
 orderAct('assign', (req, id) => {
-  if (!ROLES[req.body.role] || req.body.role === 'MT') fail('Vai trò không hợp lệ');
+  if (!ROLES[req.body.role] || ['MT', 'DEV'].includes(req.body.role)) fail('Vai trò không hợp lệ');
   if (!req.body.reason) fail('Cần lý do khi M&T phân công trực tiếp');
   assignment.adminAssign(id, req.user.id, Number(req.body.user_id), req.body.role, Math.round(Number(req.body.share_pct || 100) * 100), req.body.reason);
 }, 'Đã phân công');
@@ -156,8 +155,13 @@ router.post('/payouts', act((req) => commission.payout({ userId: Number(req.body
 
 router.get('/rates', (req, res) => {
   const history = db.all('SELECT p.*, u.code AS by_code FROM rate_policies p LEFT JOIN users u ON u.id = p.created_by ORDER BY p.id DESC');
-  res.render('admin/rates', { title: 'Cấu hình tỷ lệ doanh thu', policy: commission.activePolicy(), history });
+  const candidates = db.all("SELECT id, code, full_name, kind FROM users WHERE status = 'ACTIVE' AND kind <> 'customer' ORDER BY kind, id");
+  res.render('admin/rates', { title: 'Cấu hình tỷ lệ doanh thu', policy: commission.activePolicy(), history, candidates, devUserId: commission.devUserId() });
 });
+router.post('/rates/dev', act((req) => {
+  commission.setDevUser({ adminId: req.user.id, userId: Number(req.body.user_id) || null, reason: req.body.reason });
+  return '/admin/rates';
+}, 'Đã cập nhật người nhận phần Coder web — áp dụng cho các đợt đối soát từ bây giờ'));
 router.post('/rates', act((req) => {
   commission.setPolicy({ adminId: req.user.id, name: req.body.name || `Chính sách ${new Date().toLocaleDateString('vi-VN')}`, rates: readRates(req.body), reason: req.body.reason });
   return '/admin/rates';

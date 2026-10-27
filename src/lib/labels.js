@@ -40,8 +40,11 @@ const ROLES = {
   ACCOUNT:  { label: 'Account',  full: 'Account – Quản lý khách hàng', desc: 'Làm rõ yêu cầu, quản lý trao đổi, ghép nhân sự, xử lý phản hồi' },
   PM:       { label: 'PM',       full: 'PM – Quản lý dự án',          desc: 'Lập kế hoạch, phân công, theo dõi tiến độ, kiểm soát chất lượng' },
   PROJECT:  { label: 'Project',  full: 'Project – Triển khai dự án',  desc: 'Nhận nhiệm vụ chuyên môn, cập nhật tiến độ, nộp sản phẩm' },
+  DEV:      { label: 'Coder web', full: 'Coder web – Người xây dựng nền tảng FLC', desc: 'Phí phát triển & vận hành nền tảng, tính trên mọi Order' },
   MT:       { label: 'M&T',      full: 'M&T Group',                   desc: 'Quản trị, kiểm duyệt' },
 };
+/** Thứ tự các phần chia doanh thu — định nghĩa trong module dùng chung với trình duyệt */
+const { RATE_KEYS } = require('../../public/js/revenue-core');
 const FREELANCER_ROLES = ['REFERRER', 'SALES', 'ACCOUNT', 'PM', 'PROJECT'];
 
 const ACCOUNT_STATUS = {
@@ -100,10 +103,12 @@ const SERVICE_TYPES = [
   'Sản xuất nội dung / video', 'Dịch thuật', 'Tư vấn & phân tích dữ liệu', 'Khác',
 ];
 
-const DEFAULT_RATES = { REFERRER: 500, SALES: 1000, ACCOUNT: 1000, PM: 1000, PROJECT: 5000, MT: 1500 };
+// Bảng "Full" M&T chốt 28/10/2026: 5 · 10 · 5 · 10 · 40 · 4 (Coder web) · 26 (M&T)
+const DEFAULT_RATES = { REFERRER: 500, SALES: 1000, ACCOUNT: 500, PM: 1000, PROJECT: 4000, DEV: 400, MT: 2600 };
+const DEFAULT_VAT_PCT = 10; // dùng để ƯỚC TÍNH doanh thu thuần khi Order chưa có khoản thu nào
 
 module.exports = {
   ORDER_STATUS, STEPS, ROLES, FREELANCER_ROLES, ACCOUNT_STATUS, ASSIGNMENT_STATUS, COMMISSION_STATUS,
   PAYMENT_KIND, DELIVERABLE_KIND, REVIEW_STATUS, TASK_STATUS, DISPUTE_KIND, DISPUTE_STATUS, LEAD_STATUS,
-  SERVICE_TYPES, DEFAULT_RATES,
+  SERVICE_TYPES, DEFAULT_RATES, DEFAULT_VAT_PCT, RATE_KEYS,
 };

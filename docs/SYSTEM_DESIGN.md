@@ -41,7 +41,7 @@ FLC là nền tảng kết nối **Khách hàng** với **mạng lưới Freelan
 | A1 | Phân công | Account **mời** freelancer theo năng lực. Nếu nhiều người được mời cho cùng một vị trí độc quyền, người **chấp nhận trước** sẽ giữ chỗ và các lời mời còn lại tự hết hiệu lực. | `services/assignment.js` |
 | A2 | Dòng tiền | Khách trả cho **M&T**, sau đó M&T chi trả cho freelancer qua Payout. | `services/finance.js` |
 | A3 | Cơ sở hoa hồng | Tính **theo từng đợt thực thu**, trên doanh thu thuần của đợt đó. Chỉ tính khi Admin bấm *Đối soát*. | `services/commission.js` |
-| A4 | Tỷ lệ mặc định | Referrer 5% · Sales 10% · Account 10% · PM 10% · Project 50% · M&T 15% (tổng 100%). Admin chỉnh được. | bảng `rate_policies` |
+| A4 | Tỷ lệ mặc định (**đã chốt 28/10/2026 — bảng "Full"**) | Referrer 5% · Sales 10% · Account 5% · PM 10% · Project 40% · **Coder web 4%** · M&T 26% (tổng 100%). Admin chỉnh được. Phần Coder web trả cho tài khoản do M&T chọn (`settings.dev_user_id`), chưa chọn thì M&T giữ lại. | `rate_policies`, `public/js/revenue-core.js` |
 | A5 | Tỷ lệ đặt cọc | 50% giá trị hợp đồng (chỉnh theo từng hợp đồng). | `contracts.deposit_pct` |
 | A6 | Thanh toán | MVP: Admin xác nhận chuyển khoản thủ công. Cổng VNPay/MoMo để sang V3. | — |
 | A7 | OTP & duyệt khách | MVP chưa có OTP. Customer đăng nhập ngay và được lưu bản nháp Order, nhưng chỉ **gửi** Order sau khi M&T duyệt (đúng Bước 2). Freelancer phải chờ duyệt mới được nhận việc. | `orderFlow.guard('PENDING_INTAKE')` |
@@ -187,7 +187,13 @@ mark payment.reconciled = 1
 ```
 
 - **Một người nhiều vai trò:** mỗi vai trò là một dòng riêng, rồi cộng lại khi chi trả. Ràng buộc UNIQUE ngăn cùng một người nhận hai lần cho cùng vai trò trong cùng đợt thu.
-- **Hoa hồng dự kiến** (hiện ở cổng Freelancer) = giá trị hợp đồng × tỷ lệ × phần chia. Con số này chỉ tính khi xem, **không lưu** vào sổ, nên không nhầm với khoản thực được trả.
+- **Nguồn quy tắc duy nhất:** `computeLines`, `netRevenue` và `simulate` nằm ở `public/js/revenue-core.js` (UMD). Server dùng file này khi đối soát, còn trình duyệt dùng cho bộ tính trên trang `/fl/revenue`, nên con số minh họa luôn khớp với sổ hoa hồng.
+- **Coder web:** phần `DEV` được tính trên mọi Order, không đi qua phân công. Người nhận là `settings.dev_user_id`.
+- **Trang Doanh thu & dự án** (`/fl/revenue`) tính cho từng dự án đã nhận:
+  - *Theo thực thu* = doanh thu thuần đã thu × tỷ lệ hưởng.
+  - *Dự kiến cả HĐ* = giá trị HĐ × (thuần ÷ đã thu). Khi chưa có khoản thu nào thì giả định giá đã gồm VAT 10%.
+
+  Tỷ lệ hưởng = Σ(tỷ lệ vai trò × tỷ lệ phân công). Các số này chỉ tính khi xem, **không lưu** vào sổ, nên không nhầm với khoản thực được trả.
 - **Điều chỉnh sau khi chốt:** không sửa dòng cũ. Mỗi điều chỉnh tạo một dòng mới kèm lý do và người duyệt, ghi nhật ký.
 
 ---

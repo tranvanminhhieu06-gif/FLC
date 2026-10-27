@@ -1,66 +1,40 @@
 'use strict';
 const db = require('../db');
 const { fail, audit, notify } = require('./core');
-const { DEFAULT_RATES } = require('../lib/labels');
+const { DEFAULT_RATES, RATE_KEYS } = require('../lib/labels');
+// Quy tắc chia nằm ở module dùng chung với trình duyệt để bộ tính trên trang Doanh thu luôn khớp sổ
+const { computeLines, PAYABLE_ROLES } = require('../../public/js/revenue-core');
 
-const PAYABLE_ROLES = ['REFERRER', 'SALES', 'ACCOUNT', 'PM', 'PROJECT'];
-
-/**
- * Tính các dòng hoa hồng cho MỘT khoản thu (hàm thuần — có unit test).
- * @param net          doanh thu thuần của khoản thu (âm nếu là hoàn tiền)
- * @param allocations  { ROLE: rate_bp } — bản chụp tỷ lệ của Order
- * @param holders      { ROLE: [{ userId, shareBp }] } — người đã khóa phân công
- * @param needsPm      Order có PM hay không (không có → phần PM về Account)
- * Tổng amount của các dòng luôn bằng đúng net (phần dư làm tròn về M&T).
- */
-function computeLines({ net, allocations, holders, needsPm }) {
-  const lines = [];
-  let distributed = 0;
-  for (const role of PAYABLE_ROLES) {
-    const rate = allocations[role] || 0;
-    if (!rate) continue;
-    const pool = Math.round((net * rate) / 10000);
-    let people = holders[role] || [];
-    let reason = null;
-    if (role === 'PM' && !needsPm) {
-      people = holders.ACCOUNT || [];
-      reason = 'Account kiêm PM (Order không có PM)';
-    }
-    if (!people.length) {
-      lines.push({
-        beneficiary: 'MT', userId: null, role, base: net, rate, share: 10000, amount: pool,
-        reason: role === 'REFERRER' ? 'Không có Referrer — Admin giữ lại' : 'Không có người đảm nhận — Admin giữ lại',
-      });
-    } else {
-      const totalShare = people.reduce((s, h) => s + h.shareBp, 0) || 1;
-      let left = pool;
-      people.forEach((h, i) => {
-        const amount = i === people.length - 1 ? left : Math.round((pool * h.shareBp) / totalShare);
-        left -= amount;
-        lines.push({ beneficiary: 'U' + h.userId, userId: h.userId, role, base: net, rate, share: h.shareBp, amount, reason });
-      });
-    }
-    distributed += pool;
-  }
-  lines.push({
-    beneficiary: 'MT', userId: null, role: 'MT', base: net, rate: allocations.MT || 0, share: 10000,
-    amount: net - distributed, reason: 'Phần M&T (gồm chênh lệch làm tròn)',
-  });
-  return lines;
-}
+/** Chính sách cũ (trước khi có vai trò mới) được bổ sung 0 cho vai trò thiếu */
+const withAllKeys = (rates) => Object.fromEntries(RATE_KEYS.map((k) => [k, rates[k] || 0]));
 
 function activePolicy() {
   const p = db.get('SELECT * FROM rate_policies WHERE active = 1 ORDER BY id DESC LIMIT 1');
-  return p ? { ...p, rates: JSON.parse(p.rates_json) } : { id: null, name: 'Mặc định', rates: { ...DEFAULT_RATES } };
+  return p ? { ...p, rates: withAllKeys(JSON.parse(p.rates_json)) } : { id: null, name: 'Mặc định', rates: { ...DEFAULT_RATES } };
 }
 
 function validateRates(rates) {
-  const keys = [...PAYABLE_ROLES, 'MT'];
-  for (const k of keys) {
+  for (const k of RATE_KEYS) {
     if (!Number.isInteger(rates[k]) || rates[k] < 0 || rates[k] > 10000) fail(`Tỷ lệ ${k} không hợp lệ`);
   }
-  const sum = keys.reduce((s, k) => s + rates[k], 0);
+  const sum = RATE_KEYS.reduce((s, k) => s + rates[k], 0);
   if (sum !== 10000) fail(`Tổng tỷ lệ phải bằng 100% (hiện ${sum / 100}%)`);
+}
+
+/** Người nhận phần Coder web (cấu hình bởi M&T); null nếu chưa đặt hoặc tài khoản không còn hoạt động */
+function devUserId() {
+  const r = db.get("SELECT u.id FROM settings s JOIN users u ON u.id = CAST(s.value AS INTEGER) WHERE s.key = 'dev_user_id' AND u.status = 'ACTIVE'");
+  return r ? r.id : null;
+}
+
+function setDevUser({ adminId, userId, reason }) {
+  const before = devUserId();
+  if (userId && !db.get("SELECT 1 FROM users WHERE id = ? AND status = 'ACTIVE'", userId)) fail('Tài khoản nhận phải đang hoạt động');
+  db.tx(() => {
+    if (userId) db.run("INSERT INTO settings (key, value) VALUES ('dev_user_id', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value", String(userId));
+    else db.run("DELETE FROM settings WHERE key = 'dev_user_id'");
+    audit(adminId, 'setting.dev_user', 'setting', null, { before: { userId: before }, after: { userId: userId || null }, reason });
+  });
 }
 
 function setPolicy({ adminId, name, rates, reason }) {
@@ -85,8 +59,12 @@ function adjustAllocations({ orderId, adminId, rates, reason }) {
   db.tx(() => {
     const before = orderAllocations(orderId);
     if (!before) fail('Order chưa khóa tỷ lệ');
+    // Upsert: Order khóa trước khi có vai trò mới (vd. Coder web) chưa có dòng cho vai trò đó
     for (const [role, bp] of Object.entries(rates)) {
-      db.run('UPDATE revenue_allocations SET rate_bp = ? WHERE order_id = ? AND role = ?', bp, orderId, role);
+      db.run(
+        'INSERT INTO revenue_allocations (order_id, role, rate_bp) VALUES (?, ?, ?) ON CONFLICT(order_id, role) DO UPDATE SET rate_bp = excluded.rate_bp',
+        orderId, role, bp,
+      );
     }
     audit(adminId, 'allocation.adjust', 'order', orderId, { before, after: rates, reason });
   });
@@ -97,6 +75,9 @@ function lockedHolders(orderId) {
   for (const a of db.all("SELECT user_id, role, share_bp FROM order_assignments WHERE order_id = ? AND status = 'LOCKED'", orderId)) {
     (holders[a.role] ||= []).push({ userId: a.user_id, shareBp: a.share_bp });
   }
+  // Coder web nhận trên mọi Order, không qua phân công
+  const dev = devUserId();
+  if (dev) holders.DEV = [{ userId: dev, shareBp: 10000 }];
   return holders;
 }
 
@@ -172,24 +153,7 @@ function payout({ userId, adminId, ref }) {
   });
 }
 
-/** Hoa hồng DỰ KIẾN — chỉ tính để hiển thị, không ghi sổ */
-function estimateFor(userId) {
-  const policy = activePolicy().rates;
-  const rows = db.all(
-    `SELECT a.order_id, a.role, a.share_bp, o.code, o.title, o.status, o.needs_pm, c.value
-       FROM order_assignments a JOIN orders o ON o.id = a.order_id
-       LEFT JOIN contracts c ON c.order_id = o.id
-      WHERE a.user_id = ? AND a.status IN ('ACCEPTED','LOCKED') AND o.status NOT IN ('CANCELLED','CLOSED')`, userId,
-  );
-  return rows.map((r) => {
-    const alloc = orderAllocations(r.order_id) || policy;
-    let rate = alloc[r.role] || 0;
-    if (r.role === 'ACCOUNT' && r.needs_pm === 0) rate += alloc.PM || 0;
-    return { ...r, rate, estimate: r.value ? Math.round((r.value * rate * r.share_bp) / 1e8) : null };
-  });
-}
-
 module.exports = {
   computeLines, activePolicy, validateRates, setPolicy, orderAllocations, adjustAllocations,
-  reconcile, approve, voidLine, payout, estimateFor, PAYABLE_ROLES,
+  devUserId, setDevUser, reconcile, approve, voidLine, payout, PAYABLE_ROLES,
 };

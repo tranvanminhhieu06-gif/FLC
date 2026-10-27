@@ -1,5 +1,5 @@
 <%- include('../partials/app-start') %>
-<% const KEYS = ['REFERRER', 'SALES', 'ACCOUNT', 'PM', 'PROJECT', 'MT']; %>
+<% const KEYS = L.RATE_KEYS; %>
 <div class="page-head"><div><h1>Tỷ lệ doanh thu theo vai trò</h1><p class="muted">Áp dụng cho các Order <strong>được khóa sau thời điểm lưu</strong>. Order đã khóa giữ nguyên tỷ lệ cũ, trừ khi Admin điều chỉnh riêng (có lý do).</p></div></div>
 <div class="split">
   <form class="card" method="post" action="/admin/rates">
@@ -19,6 +19,21 @@
     </div>
     <button class="btn btn-primary" data-confirm="Áp dụng chính sách mới cho các Order khóa từ bây giờ?">Lưu chính sách mới</button>
   </form>
+  <div class="stack">
+  <form class="card" method="post" action="/admin/rates/dev">
+    <input type="hidden" name="_csrf" value="<%= csrf() %>">
+    <h3>Người nhận phần Coder web</h3>
+    <p class="small muted">Phần <%= fmt.pct(policy.rates.DEV) %> phí phát triển &amp; vận hành nền tảng, tính trên mọi Order. Chưa chọn thì M&amp;T giữ lại.</p>
+    <div class="field">
+      <label for="f_dev">Tài khoản nhận</label>
+      <select class="select" id="f_dev" name="user_id">
+        <option value="">— Chưa chọn (M&amp;T giữ lại) —</option>
+        <% for (const c of candidates) { %><option value="<%= c.id %>" <%- c.id === devUserId ? 'selected' : '' %>><%= c.code %> · <%= c.full_name %><%= c.kind === 'admin' ? ' (Admin)' : '' %></option><% } %>
+      </select>
+    </div>
+    <%- include('../partials/field', { name: 'reason', label: 'Ghi chú' }) %>
+    <button class="btn btn-secondary btn-sm">Lưu người nhận</button>
+  </form>
   <div class="card">
     <h3>Quy tắc tính</h3>
     <ul class="small" style="padding-left: 18px">
@@ -32,8 +47,9 @@
     <h3 style="margin-top: var(--sp-5)">Lịch sử chính sách</h3>
     <ul class="timeline"><% for (const h of history) { const r = JSON.parse(h.rates_json); %>
       <li><strong><%= h.name %></strong> <%- h.active ? '<span class="badge success">Đang áp dụng</span>' : '' %>
-        <div class="small muted"><%= KEYS.map((k) => `${L.ROLES[k].label} ${r[k] / 100}%`).join(' · ') %></div><time><%= h.by_code || 'Hệ thống' %> · <%= fmt.dateTime(h.created_at) %></time></li>
+        <div class="small muted"><%= KEYS.filter((k) => r[k] != null).map((k) => `${L.ROLES[k].label} ${r[k] / 100}%`).join(' · ') %></div><time><%= h.by_code || 'Hệ thống' %> · <%= fmt.dateTime(h.created_at) %></time></li>
     <% } %></ul>
+  </div>
   </div>
 </div>
 <%- include('../partials/app-end') %>
