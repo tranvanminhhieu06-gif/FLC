@@ -1,0 +1,165 @@
+<%- include('../partials/app-start') %>
+<%
+  // ---- Biểu đồ cột nhóm: doanh thu 12 tháng ----
+  const W = 560, H = 230, PL = 48, PB = 26, PT = 18;
+  const maxV = Math.max(1, ...d.monthly.map((m) => Math.max(m.collected, m.net)));
+  const mag = Math.pow(10, Math.floor(Math.log10(maxV)));
+  const niceMax = [1, 2, 2.5, 5, 10].map((s) => s * mag).find((v) => v >= maxV);
+  const ticks = [0, 0.25, 0.5, 0.75, 1].map((t) => t * niceMax);
+  const plotW = W - PL, plotH = H - PB - PT;
+  const groupW = plotW / d.monthly.length;
+  const barW = Math.max(4, Math.min(18, (groupW - 10) / 2));
+  const y = (v) => PT + plotH - (Math.max(0, v) / niceMax) * plotH;
+  // Cột bo 4px ở đầu dữ liệu, gốc vuông bám trục
+  const bar = (x, v, w) => {
+    const top = y(v), base = PT + plotH, r = Math.min(4, (base - top) / 2, w / 2);
+    if (base - top < 0.5) return '';
+    return `M${x},${base}V${top + r}Q${x},${top} ${x + r},${top}H${x + w - r}Q${x + w},${top} ${x + w},${top + r}V${base}Z`;
+  };
+  const monthLabel = (k) => { const [yy, mm] = k.split('-'); return `T${Number(mm)}/${yy.slice(2)}`; };
+
+  // ---- Phễu ----
+  const F = d.funnel;
+  const steps = [
+    ['Gửi Order', F.submitted], ['Sales tiếp nhận', F.consulted], ['Đã báo giá', F.quoted], ['Ký hợp đồng', F.signed],
+    ['Đã cọc', F.deposited], ['Triển khai', F.started], ['Nghiệm thu', F.accepted], ['Hoàn tất', F.completed],
+  ];
+  const fMax = Math.max(1, F.submitted);
+
+  // ---- Hoa hồng theo vai trò ----
+  const roles = d.commissionByRole;
+  const cMax = Math.max(1, ...roles.map((r) => r.pending + r.approved + r.paid));
+  const Q = d.queue;
+  const queue = [
+    ['Tài khoản chờ duyệt', Q.accounts, '/admin/accounts'],
+    ['Khoản thu chờ xác nhận', Q.payments, '/admin/finance'],
+    ['Phương án chờ duyệt ghép', Q.match_approvals, '/admin/orders?status=PENDING_MATCH_APPROVAL'],
+    ['Order chờ đối soát', Q.reconciliation, '/admin/orders?status=RECONCILIATION'],
+    ['Hoa hồng chờ duyệt', Q.commissions, '/admin/finance'],
+    ['Khiếu nại đang mở', Q.disputes, '/admin/disputes'],
+  ];
+%>
+<div class="page-head">
+  <div><h1>Bảng điều khiển M&amp;T</h1><p class="muted">Số liệu tính trên khoản thu <strong>đã xác nhận</strong>. Phần M&amp;T chỉ gồm các đợt đã đối soát.</p></div>
+  <nav class="row" aria-label="Khoảng thời gian">
+    <% for (const r of [30, 90, 365]) { %><a class="btn btn-sm <%= range === r ? 'btn-primary' : 'btn-secondary' %>" href="?range=<%= r %>" <%- range === r ? 'aria-current="page"' : '' %>><%= r === 365 ? '12 tháng' : r + ' ngày' %></a><% } %>
+  </nav>
+</div>
+
+<!-- KPI -->
+<div class="grid grid-4" style="margin-bottom: var(--sp-6)">
+  <div class="stat"><div class="stat-label">Thực thu</div><div class="stat-value"><%= fmt.short(d.kpi.collected) %></div><div class="stat-sub"><%= fmt.vnd(d.kpi.collected) %> · đã trừ hoàn tiền</div></div>
+  <div class="stat"><div class="stat-label">Doanh thu thuần</div><div class="stat-value"><%= fmt.short(d.kpi.net) %></div><div class="stat-sub">Sau thuế gián thu &amp; giảm trừ</div></div>
+  <div class="stat"><div class="stat-label">Phần M&amp;T</div><div class="stat-value" style="color: var(--c-brand-700)"><%= fmt.short(d.kpi.mt_profit) %></div><div class="stat-sub"><%= d.kpi.net ? Math.round(100 * d.kpi.mt_profit / d.kpi.net) + '% doanh thu thuần' : 'Chưa đối soát' %></div></div>
+  <div class="stat"><div class="stat-label">Công nợ phải thu</div><div class="stat-value" style="color: var(--c-accent-700)"><%= fmt.short(d.kpi.receivable) %></div><div class="stat-sub">Toàn bộ Order còn hiệu lực</div></div>
+</div>
+
+<div class="split" style="margin-bottom: var(--sp-6)">
+  <!-- Doanh thu theo tháng -->
+  <section class="card">
+    <div class="card-head"><h2>Doanh thu 12 tháng</h2></div>
+    <div class="legend" aria-hidden="true"><span><i style="background:var(--chart-2)"></i>Thực thu</span><span><i style="background:var(--chart-1)"></i>Doanh thu thuần</span></div>
+    <svg class="chart" viewBox="0 0 <%= W %> <%= H %>" role="img" aria-labelledby="rev-title">
+      <title id="rev-title">Thực thu và doanh thu thuần theo tháng, 12 tháng gần nhất. Bảng số liệu ở dưới.</title>
+      <% for (const t of ticks) { %>
+        <line class="<%= t ? 'gridline' : 'baseline' %>" x1="<%= PL %>" x2="<%= W %>" y1="<%= y(t) %>" y2="<%= y(t) %>"/>
+        <text x="<%= PL - 6 %>" y="<%= y(t) + 4 %>" text-anchor="end"><%= fmt.short(t) %></text>
+      <% } %>
+      <% d.monthly.forEach((m, i) => { const gx = PL + i * groupW + (groupW - (barW * 2 + 2)) / 2; %>
+        <g class="mark">
+          <title><%= monthLabel(m.month) %> — Thực thu <%= fmt.vnd(m.collected) %> · Thuần <%= fmt.vnd(m.net) %></title>
+          <rect class="hit" x="<%= PL + i * groupW %>" y="<%= PT %>" width="<%= groupW %>" height="<%= plotH %>"/>
+          <path d="<%= bar(gx, m.collected, barW) %>" style="fill:var(--chart-2)"/>
+          <path d="<%= bar(gx + barW + 2, m.net, barW) %>" style="fill:var(--chart-1)"/>
+          <text x="<%= PL + i * groupW + groupW / 2 %>" y="<%= H - 8 %>" text-anchor="middle"><%= monthLabel(m.month) %></text>
+        </g>
+      <% }) %>
+      <% const last = d.monthly[d.monthly.length - 1]; if (last.net > 0) { %>
+        <text class="val" x="<%= W - groupW / 2 %>" y="<%= y(Math.max(last.collected, last.net)) - 6 %>" text-anchor="middle"><%= fmt.short(last.net) %></text>
+      <% } %>
+    </svg>
+    <details class="disclose" style="margin-top: var(--sp-3)"><summary>Xem bảng số liệu</summary>
+      <div class="table-wrap"><table class="table"><thead><tr><th>Tháng</th><th class="num">Thực thu</th><th class="num">Thuần</th></tr></thead>
+        <tbody><% for (const m of d.monthly) { %><tr><td><%= monthLabel(m.month) %></td><td class="num"><%= fmt.vnd(m.collected) %></td><td class="num"><%= fmt.vnd(m.net) %></td></tr><% } %></tbody></table></div>
+    </details>
+  </section>
+
+  <!-- Hàng đợi -->
+  <section class="card">
+    <div class="card-head"><h2>Việc chờ M&amp;T</h2></div>
+    <ul style="list-style:none; padding:0; margin:0">
+      <% for (const [label, n, href] of queue) { %>
+        <li style="border-bottom:1px solid var(--c-border)"><a href="<%= href %>" class="row between" style="min-height:44px; flex-wrap:nowrap; text-decoration:none; color:inherit">
+          <span class="small"><%= label %></span>
+          <span class="badge <%= n ? 'warn' : 'neutral' %>"><%= n %></span></a></li>
+      <% } %>
+    </ul>
+    <div class="stat" style="margin-top: var(--sp-4); background: var(--c-brand-50)"><div class="stat-label">Đã duyệt, chờ chi trả</div><div class="stat-value" style="font-size: var(--fs-xl)"><%= fmt.vnd(Q.payable) %></div></div>
+  </section>
+</div>
+
+<div class="grid grid-2" style="margin-bottom: var(--sp-6)">
+  <!-- Phễu -->
+  <section class="card">
+    <div class="card-head"><h2>Phễu Order</h2><span class="small muted">Order gửi trong <%= range === 365 ? '12 tháng' : range + ' ngày' %></span></div>
+    <% if (!F.submitted) { %><div class="empty"><p>Chưa có Order trong kỳ.</p></div><% } else { %>
+    <svg class="chart" viewBox="0 0 520 <%= steps.length * 30 %>" role="img" aria-labelledby="fun-title">
+      <title id="fun-title">Số Order đạt từng mốc trong quy trình</title>
+      <% steps.forEach(([label, n], i) => { const w = Math.max(n ? 4 : 0, (n / fMax) * 300); %>
+        <g class="mark"><title><%= label %>: <%= n %> Order (<%= Math.round(100 * n / fMax) %>%)</title>
+          <rect class="hit" x="0" y="<%= i * 30 %>" width="520" height="28"/>
+          <text x="118" y="<%= i * 30 + 18 %>" text-anchor="end"><%= label %></text>
+          <% if (w) { %><path d="M126,<%= i * 30 + 6 %>H<%= 126 + w - 4 %>Q<%= 126 + w %>,<%= i * 30 + 6 %> <%= 126 + w %>,<%= i * 30 + 10 %>V<%= i * 30 + 20 %>Q<%= 126 + w %>,<%= i * 30 + 24 %> <%= 126 + w - 4 %>,<%= i * 30 + 24 %>H126Z" style="fill:var(--chart-1)"/><% } %>
+          <text class="val" x="<%= 134 + w %>" y="<%= i * 30 + 19 %>"><%= n %> <tspan style="font-weight:400; fill: var(--c-text-muted)">· <%= Math.round(100 * n / fMax) %>%</tspan></text>
+        </g>
+      <% }) %>
+    </svg>
+    <% } %>
+    <p class="small muted" style="margin-top: var(--sp-3)">Tỷ lệ chốt báo giá: <strong><%= d.quote.rate == null ? '—' : d.quote.rate + '%' %></strong> (<%= d.quote.won %>/<%= d.quote.answered %> báo giá đã phản hồi)<% if (d.quote.avg_rounds_to_win) { %> · trung bình <%= String(d.quote.avg_rounds_to_win).replace('.', ',') %> vòng để chốt<% } %></p>
+  </section>
+
+  <!-- Hoa hồng theo vai trò -->
+  <section class="card">
+    <div class="card-head"><h2>Hoa hồng theo vai trò</h2></div>
+    <% if (!roles.length) { %><div class="empty"><p>Chưa đối soát Order nào.</p></div><% } else { %>
+    <div class="legend" aria-hidden="true"><span><i style="background:var(--seq-1)"></i>Chờ duyệt</span><span><i style="background:var(--seq-2)"></i>Đã duyệt</span><span><i style="background:var(--seq-3)"></i>Đã chi</span></div>
+    <svg class="chart" viewBox="0 0 520 <%= roles.length * 32 %>" role="img" aria-labelledby="com-title">
+      <title id="com-title">Hoa hồng theo vai trò và trạng thái. Số liệu chi tiết trong bảng bên dưới.</title>
+      <% roles.forEach((r, i) => { let x = 96; const segs = [['pending', 'var(--seq-1)'], ['approved', 'var(--seq-2)'], ['paid', 'var(--seq-3)']]; const total = r.pending + r.approved + r.paid; %>
+        <g class="mark"><title><%= L.ROLES[r.role].label %> — Chờ duyệt <%= fmt.vnd(r.pending) %> · Đã duyệt <%= fmt.vnd(r.approved) %> · Đã chi <%= fmt.vnd(r.paid) %></title>
+          <rect class="hit" x="0" y="<%= i * 32 %>" width="520" height="30"/>
+          <text x="88" y="<%= i * 32 + 19 %>" text-anchor="end"><%= L.ROLES[r.role].label %></text>
+          <% for (const [k, c] of segs) { const w = (Math.max(0, r[k]) / cMax) * 320; if (w < 1) continue; %>
+            <rect x="<%= x %>" y="<%= i * 32 + 7 %>" width="<%= Math.max(1, w - 2) %>" height="16" rx="3" style="fill:<%= c %>"/>
+          <% x += w; } %>
+          <text class="val" x="<%= x + 6 %>" y="<%= i * 32 + 19 %>"><%= fmt.short(total) %></text>
+        </g>
+      <% }) %>
+    </svg>
+    <div class="table-wrap" style="margin-top: var(--sp-3)"><table class="table">
+      <thead><tr><th>Vai trò</th><th class="num">Chờ duyệt</th><th class="num">Đã duyệt</th><th class="num">Đã chi</th></tr></thead>
+      <tbody><% for (const r of roles) { %><tr><td><%= L.ROLES[r.role].label %></td><td class="num"><%= fmt.num(r.pending) %></td><td class="num"><%= fmt.num(r.approved) %></td><td class="num"><%= fmt.num(r.paid) %></td></tr><% } %></tbody>
+    </table></div>
+    <% } %>
+  </section>
+</div>
+
+<div class="grid grid-2">
+  <section class="card flush">
+    <div class="card-head"><h2>Công nợ lớn nhất</h2><a class="small" href="/admin/reports#receivables">Tất cả</a></div>
+    <% if (!d.receivables.length) { %><div class="empty"><p>Không có công nợ.</p></div><% } else { %>
+    <div class="table-wrap"><table class="table">
+      <thead><tr><th>Order</th><th>Trạng thái</th><th class="num">Còn phải thu</th><th class="num">Tuổi nợ</th></tr></thead>
+      <tbody><% for (const r of d.receivables) { %><tr><td><a class="mono" href="/orders/<%= r.id %>"><%= r.code %></a> <span class="small"><%= r.title %></span></td><td><%- badge(L.ORDER_STATUS, r.status) %></td><td class="num"><%= fmt.vnd(r.outstanding) %></td><td class="num"><%= r.age_days %> ngày</td></tr><% } %></tbody>
+    </table></div><% } %>
+  </section>
+  <section class="card flush">
+    <div class="card-head"><h2>Freelancer nổi bật</h2><a class="small" href="/admin/reports#freelancers">Báo cáo hiệu suất</a></div>
+    <% if (!d.topFreelancers.length) { %><div class="empty"><p>Chưa có dữ liệu.</p></div><% } else { %>
+    <div class="table-wrap"><table class="table">
+      <thead><tr><th>Freelancer</th><th class="num">Order</th><th class="num">Đúng hạn</th><th class="num">Tỷ lệ sửa</th><th class="num">Thu nhập</th></tr></thead>
+      <tbody><% for (const f of d.topFreelancers) { %><tr><td><span class="mono small"><%= f.code %></span> <%= f.full_name %></td><td class="num"><%= f.orders %></td><td class="num"><%= f.on_time_pct == null ? '—' : f.on_time_pct + '%' %></td><td class="num"><%= f.revision_pct == null ? '—' : f.revision_pct + '%' %></td><td class="num"><%= fmt.short(f.earned) %></td></tr><% } %></tbody>
+    </table></div><% } %>
+  </section>
+</div>
+<%- include('../partials/app-end') %>

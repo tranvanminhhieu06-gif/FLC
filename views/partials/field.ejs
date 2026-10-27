@@ -1,0 +1,13 @@
+<%#
+  Ô nhập chuẩn. Tham số: name, label, type?, required?, hint?, value?, attrs?, errors
+%>
+<% const err = locals.errors && locals.errors[name]; const fid = 'f_' + name; %>
+<div class="field">
+  <label for="<%= fid %>"><%= label %><% if (locals.required) { %> <span class="req" aria-hidden="true">*</span><% } %></label>
+  <% if (locals.type === 'textarea') { %>
+    <textarea class="textarea" id="<%= fid %>" name="<%= name %>" <%- locals.required ? 'required' : '' %> <%- err ? 'aria-invalid="true" aria-describedby="' + fid + '_e"' : '' %> <%- locals.attrs || '' %>><%= locals.value ?? '' %></textarea>
+  <% } else { %>
+    <input class="input" id="<%= fid %>" name="<%= name %>" type="<%= locals.type || 'text' %>" value="<%= locals.value ?? '' %>" <%- locals.required ? 'required' : '' %> <%- err ? 'aria-invalid="true" aria-describedby="' + fid + '_e"' : '' %> <%- locals.attrs || '' %>>
+  <% } %>
+  <% if (err) { %><span class="error" id="<%= fid %>_e"><%= err %></span><% } else if (locals.hint) { %><span class="hint"><%= hint %></span><% } %>
+</div>

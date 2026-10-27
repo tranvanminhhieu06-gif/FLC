@@ -1,0 +1,39 @@
+<%- include('../partials/app-start') %>
+<% const KEYS = ['REFERRER', 'SALES', 'ACCOUNT', 'PM', 'PROJECT', 'MT']; %>
+<div class="page-head"><div><h1>Tỷ lệ doanh thu theo vai trò</h1><p class="muted">Áp dụng cho các Order <strong>được khóa sau thời điểm lưu</strong>. Order đã khóa giữ nguyên tỷ lệ cũ, trừ khi Admin điều chỉnh riêng (có lý do).</p></div></div>
+<div class="split">
+  <form class="card" method="post" action="/admin/rates">
+    <input type="hidden" name="_csrf" value="<%= csrf() %>">
+    <h2>Chính sách hiện hành: <%= policy.name %></h2>
+    <div class="table-wrap"><table class="table">
+      <thead><tr><th>Vai trò</th><th>Mô tả</th><th class="num" style="width:140px">Tỷ lệ %</th></tr></thead>
+      <tbody><% for (const k of KEYS) { %>
+        <tr><td><strong><%= L.ROLES[k].label %></strong></td><td class="small muted"><%= k === 'MT' ? 'Phần M&T giữ lại, cộng thêm phần Referrer khi không có người giới thiệu' : L.ROLES[k].desc %></td>
+          <td><label class="sr-only" for="r_<%= k %>">Tỷ lệ <%= k %></label><input class="input" id="r_<%= k %>" name="rate_<%= k %>" type="number" step="0.01" min="0" max="100" value="<%= policy.rates[k] / 100 %>" style="text-align:right"></td></tr>
+      <% } %></tbody>
+      <tfoot><tr><td colspan="2">Tổng (phải bằng 100%)</td><td class="num"><%= KEYS.reduce((s, k) => s + policy.rates[k], 0) / 100 %>%</td></tr></tfoot>
+    </table></div>
+    <div class="form-grid" style="margin-top: var(--sp-4)">
+      <%- include('../partials/field', { name: 'name', label: 'Tên chính sách mới', hint: 'VD: Chính sách Q1/2027' }) %>
+      <%- include('../partials/field', { name: 'reason', label: 'Lý do thay đổi' }) %>
+    </div>
+    <button class="btn btn-primary" data-confirm="Áp dụng chính sách mới cho các Order khóa từ bây giờ?">Lưu chính sách mới</button>
+  </form>
+  <div class="card">
+    <h3>Quy tắc tính</h3>
+    <ul class="small" style="padding-left: 18px">
+      <li>Cơ sở tính = doanh thu thuần của từng đợt thực thu (thực thu − thuế gián thu − giảm trừ).</li>
+      <li>Không có Referrer: phần 5% <strong>không chuyển cho người khác</strong>, M&amp;T giữ lại.</li>
+      <li>Order không có PM: Account nhận phần PM (dòng riêng, vai trò PM).</li>
+      <li>Nhiều Project: chia theo tỷ lệ phân công đã khóa.</li>
+      <li>Một người nhiều vai trò: cộng từng vai trò, không ghi trùng cùng vai trò trong cùng đợt thu.</li>
+      <li>Chênh lệch làm tròn được cộng vào phần M&amp;T.</li>
+    </ul>
+    <h3 style="margin-top: var(--sp-5)">Lịch sử chính sách</h3>
+    <ul class="timeline"><% for (const h of history) { const r = JSON.parse(h.rates_json); %>
+      <li><strong><%= h.name %></strong> <%- h.active ? '<span class="badge success">Đang áp dụng</span>' : '' %>
+        <div class="small muted"><%= KEYS.map((k) => `${L.ROLES[k].label} ${r[k] / 100}%`).join(' · ') %></div><time><%= h.by_code || 'Hệ thống' %> · <%= fmt.dateTime(h.created_at) %></time></li>
+    <% } %></ul>
+  </div>
+</div>
+<%- include('../partials/app-end') %>

@@ -1,0 +1,32 @@
+<%- include('../partials/app-start') %>
+<div class="page-head"><div><h1>Lời mời nhận việc</h1><p class="muted">Vị trí PM là độc quyền: người chấp nhận trước giữ chỗ. Sau khi M&amp;T khóa phương án, các lời mời còn lại hết hiệu lực.</p></div></div>
+<% const open = list.filter((a) => a.status === 'INVITED' && a.order_status === 'MATCHING'); %>
+<% if (!open.length) { %><div class="card empty"><%- icon('inbox') %><p>Không có lời mời đang chờ.</p></div><% } %>
+<div class="grid grid-2">
+  <% for (const a of open) { %>
+    <article class="card">
+      <div class="card-head"><h3><span class="mono"><%= a.code %></span> · <%= a.title %></h3><span class="badge violet"><%= L.ROLES[a.role].label %></span></div>
+      <p class="small muted"><%= (a.description || '').slice(0, 220) %></p>
+      <dl class="kv" style="margin-bottom: var(--sp-4)">
+        <dt>Dịch vụ</dt><dd><%= a.service_type %></dd>
+        <dt>Hạn</dt><dd><%= fmt.date(a.deadline) %></dd>
+        <dt>Tỷ lệ phân công</dt><dd><%= fmt.pct(a.share_bp) %> của phần <%= L.ROLES[a.role].label %></dd>
+        <dt>Dự kiến</dt><dd><%= a.value ? fmt.vnd(Math.round(a.value * (policy[a.role] || 0) * a.share_bp / 1e8)) : '—' %> <span class="muted small">(theo chính sách hiện hành, chưa khóa)</span></dd>
+        <dt>Người mời</dt><dd><%= a.inviter || '—' %></dd>
+      </dl>
+      <div class="row">
+        <form method="post" action="/fl/invitations/<%= a.id %>"><input type="hidden" name="_csrf" value="<%= csrf() %>"><input type="hidden" name="accept" value="1"><button class="btn btn-primary">Nhận việc</button></form>
+        <form method="post" action="/fl/invitations/<%= a.id %>"><input type="hidden" name="_csrf" value="<%= csrf() %>"><input type="hidden" name="accept" value="0"><button class="btn btn-secondary">Từ chối</button></form>
+        <a class="btn btn-ghost" href="/orders/<%= a.order_id %>">Xem chi tiết</a>
+      </div>
+    </article>
+  <% } %>
+</div>
+<% const past = list.filter((a) => !open.includes(a)); if (past.length) { %>
+  <h2 style="margin-top: var(--sp-8)">Lịch sử</h2>
+  <div class="card flush"><div class="table-wrap"><table class="table">
+    <thead><tr><th>Order</th><th>Vai trò</th><th>Trạng thái</th><th>Ngày</th></tr></thead>
+    <tbody><% for (const a of past) { %><tr><td><span class="mono"><%= a.code %></span> <%= a.title %></td><td><%= L.ROLES[a.role].label %></td><td><%- badge(L.ASSIGNMENT_STATUS, a.status === 'INVITED' ? 'EXPIRED' : a.status) %></td><td class="muted"><%= fmt.date(a.created_at) %></td></tr><% } %></tbody>
+  </table></div></div>
+<% } %>
+<%- include('../partials/app-end') %>

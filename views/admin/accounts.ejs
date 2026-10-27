@@ -1,0 +1,30 @@
+<%- include('../partials/app-start') %>
+<div class="page-head"><div><h1>Duyệt tài khoản</h1><p class="muted">Bước 2: kiểm tra hồ sơ, gán vai trò, kích hoạt hoặc yêu cầu bổ sung.</p></div></div>
+<nav class="tabs" aria-label="Lọc theo trạng thái">
+  <% for (const [k, v] of Object.entries(L.ACCOUNT_STATUS)) { %>
+    <a href="?status=<%= k %><%= kind ? '&kind=' + kind : '' %>" <%- status === k ? 'aria-current="page"' : '' %>><%= v.label %> <span class="muted">(<%= counts[k] || 0 %>)</span></a>
+  <% } %>
+</nav>
+<div class="row" style="margin-bottom: var(--sp-4)">
+  <a class="btn btn-sm <%= !kind ? 'btn-primary' : 'btn-secondary' %>" href="?status=<%= status %>">Tất cả</a>
+  <a class="btn btn-sm <%= kind === 'customer' ? 'btn-primary' : 'btn-secondary' %>" href="?status=<%= status %>&kind=customer">Khách hàng</a>
+  <a class="btn btn-sm <%= kind === 'freelancer' ? 'btn-primary' : 'btn-secondary' %>" href="?status=<%= status %>&kind=freelancer">Freelancer</a>
+</div>
+<div class="card flush">
+  <% if (!list.length) { %><div class="empty"><%- icon('users') %><p>Không có tài khoản nào.</p></div><% } else { %>
+  <div class="table-wrap"><table class="table">
+    <thead><tr><th>Mã</th><th>Họ tên</th><th>Loại</th><th>Liên hệ</th><th>Vai trò đăng ký</th><th>Trạng thái</th><th>Ngày đăng ký</th></tr></thead>
+    <tbody><% for (const u of list) { %>
+      <tr>
+        <td class="mono"><a href="/admin/accounts/<%= u.id %>"><%= u.code %></a></td>
+        <td><a href="/admin/accounts/<%= u.id %>" style="color:inherit"><strong><%= u.full_name || '—' %></strong></a><% if (u.company) { %><div class="small muted"><%= u.company %></div><% } %></td>
+        <td><%= u.kind === 'customer' ? 'Khách hàng' : 'Freelancer' %></td>
+        <td class="small"><%= u.email || '' %><br><%= u.phone || '' %></td>
+        <td><% for (const rs of (u.roles || '').split(',').filter(Boolean)) { const [r, s] = rs.split(':'); %><span class="tag" title="<%= s %>"><%= L.ROLES[r].label %><%= s === 'PENDING' ? ' ·chờ' : s === 'REJECTED' ? ' ·không' : '' %></span> <% } %></td>
+        <td><%- badge(L.ACCOUNT_STATUS, u.status) %></td>
+        <td class="muted nowrap"><%= fmt.date(u.created_at) %></td>
+      </tr>
+    <% } %></tbody>
+  </table></div><% } %>
+</div>
+<%- include('../partials/app-end') %>

@@ -1,0 +1,71 @@
+<%- include('../partials/app-start') %>
+<% const C = `<input type="hidden" name="_csrf" value="${csrf()}">`; %>
+<div class="page-head">
+  <div><a class="small" href="/admin/accounts">← Danh sách</a><h1><%= u.full_name || u.code %></h1>
+    <div class="row"><span class="mono"><%= u.code %></span><%- badge(L.ACCOUNT_STATUS, u.status) %><span class="tag"><%= u.kind === 'customer' ? 'Khách hàng' : 'Freelancer' %></span></div></div>
+</div>
+<div class="split">
+  <div class="stack" style="min-width:0">
+    <div class="card">
+      <h2>Thông tin</h2>
+      <dl class="kv">
+        <dt>Gmail</dt><dd><%= u.email || '—' %></dd>
+        <dt>Điện thoại</dt><dd><%= u.phone || '—' %></dd>
+        <% if (fl) { %>
+          <dt>Ngày sinh</dt><dd><%= fmt.date(fl.dob) %></dd>
+          <dt>Mã thành viên</dt><dd class="mono"><%= fl.member_code %></dd>
+          <dt>Danh mục dịch vụ</dt><dd><%= fl.service_types || '—' %></dd>
+          <dt>Kỹ năng</dt><dd><%= fl.skills || '—' %></dd>
+          <dt>Kinh nghiệm</dt><dd style="white-space:pre-line"><%= fl.experience || '—' %></dd>
+          <dt>Sản phẩm đã làm</dt><dd style="white-space:pre-line"><%= fl.portfolio || '—' %></dd>
+          <dt><%- icon('lock') %> Ngân hàng</dt><dd><%= fl.bank_name %> · <span class="mono"><%= fl.bank_account %></span> · <%= fl.bank_holder %></dd>
+        <% } %>
+        <% if (cu) { %>
+          <dt>Doanh nghiệp</dt><dd><%= cu.company || '—' %></dd>
+          <dt>MST</dt><dd><%= cu.tax_code || '—' %></dd>
+          <dt>Địa chỉ</dt><dd><%= cu.address || '—' %></dd>
+          <dt>Người giới thiệu</dt><dd><%= cu.referrer_code ? `${cu.referrer_code} (${cu.referrer_user_code || 'không hợp lệ'})` : '—' %></dd>
+        <% } %>
+        <% if (u.status_note) { %><dt>Ghi chú duyệt</dt><dd><%= u.status_note %></dd><% } %>
+      </dl>
+    </div>
+    <% if (fl) { %>
+    <div class="card">
+      <h2>Hồ sơ xác minh <span class="small muted">(chỉ M&amp;T xem)</span></h2>
+      <div class="row">
+        <a class="btn btn-secondary btn-sm" href="/files/profile/<%= u.id %>/cv" target="_blank" rel="noopener"><%- icon('file') %>CV</a>
+        <a class="btn btn-secondary btn-sm" href="/files/profile/<%= u.id %>/id_front" target="_blank" rel="noopener"><%- icon('eye') %>CCCD mặt trước</a>
+        <a class="btn btn-secondary btn-sm" href="/files/profile/<%= u.id %>/id_back" target="_blank" rel="noopener"><%- icon('eye') %>CCCD mặt sau</a>
+      </div>
+    </div>
+    <% } %>
+    <div class="card flush">
+      <div class="card-head"><h2>Order liên quan</h2></div>
+      <% if (!orderRows.length) { %><div class="empty"><p>Chưa có.</p></div><% } else { %>
+      <div class="table-wrap"><table class="table"><tbody>
+        <% for (const o of orderRows) { %><tr><td class="mono"><a href="/orders/<%= o.id %>"><%= o.code %></a></td><td><%= o.title %></td><td><%= o.role ? L.ROLES[o.role].label : '' %></td><td><%- badge(L.ORDER_STATUS, o.status) %></td></tr><% } %>
+      </tbody></table></div><% } %>
+    </div>
+  </div>
+  <aside class="stack">
+    <form class="card" method="post" action="/admin/accounts/<%= u.id %>/review"><%- C %>
+      <h2>Kiểm định</h2>
+      <% if (roles.length) { %>
+        <div class="field"><span class="label">Gán vai trò</span>
+          <div class="checks"><% for (const r of roles) { %><label class="check"><input type="checkbox" name="roles" value="<%= r.role %>" <%- r.status !== 'REJECTED' ? 'checked' : '' %>><%= L.ROLES[r.role].label %><% if (r.status === 'PENDING') { %> <span class="badge warn">chờ</span><% } %></label><% } %></div>
+          <span class="hint">Bỏ chọn vai trò không cấp. Một người nhiều vai trò vẫn được ghi nhận riêng từng nhiệm vụ.</span></div>
+      <% } %>
+      <%- include('../partials/field', { name: 'note', label: 'Ghi chú / lý do', type: 'textarea', attrs: 'rows="3"', hint: 'Bắt buộc khi yêu cầu bổ sung, từ chối hoặc tạm dừng' }) %>
+      <div class="stack">
+        <button class="btn btn-primary btn-block" name="decision" value="approve"><%- icon('check') %>Duyệt &amp; kích hoạt</button>
+        <button class="btn btn-secondary btn-block" name="decision" value="info">Yêu cầu bổ sung</button>
+        <button class="btn btn-secondary btn-block" name="decision" value="suspend">Tạm dừng</button>
+        <button class="btn btn-danger btn-block" name="decision" value="reject" data-confirm="Từ chối tài khoản này?">Từ chối</button>
+      </div>
+    </form>
+    <div class="card"><h3>Lịch sử</h3>
+      <ul class="timeline"><% for (const h of history) { %><li><strong><%= h.action %></strong><% if (h.reason) { %> — <%= h.reason %><% } %><time><%= h.actor_code || '—' %> · <%= fmt.dateTime(h.created_at) %></time></li><% } %></ul>
+    </div>
+  </aside>
+</div>
+<%- include('../partials/app-end') %>

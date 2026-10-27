@@ -1,0 +1,23 @@
+<%- include('../partials/public-start') %>
+<main class="auth-wrap" id="main">
+  <div class="card auth-card">
+    <h1>Đăng nhập</h1>
+    <p class="muted">Dùng Gmail hoặc số điện thoại đã đăng ký.</p>
+    <% if (locals.error) { %><div class="alert danger" role="alert"><%- icon('alert') %><div><%= error %></div></div><% } %>
+    <form method="post" action="/login" novalidate>
+      <input type="hidden" name="_csrf" value="<%= csrf() %>">
+      <% if (next) { %><input type="hidden" name="next" value="<%= next %>"><% } %>
+      <div class="field">
+        <label for="identifier">Gmail hoặc số điện thoại</label>
+        <input class="input" id="identifier" name="identifier" value="<%= identifier %>" autocomplete="username" required autofocus>
+      </div>
+      <div class="field">
+        <label for="password">Mật khẩu</label>
+        <input class="input" id="password" name="password" type="password" autocomplete="current-password" required>
+      </div>
+      <button class="btn btn-primary btn-block" type="submit">Đăng nhập</button>
+    </form>
+    <p class="small muted" style="margin-top: var(--sp-4)">Chưa có tài khoản? <a href="/register">Đăng ký</a></p>
+  </div>
+</main>
+<%- include('../partials/public-end') %>

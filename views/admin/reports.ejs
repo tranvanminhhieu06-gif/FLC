@@ -1,0 +1,52 @@
+<%- include('../partials/app-start') %>
+<div class="page-head"><div><h1>Báo cáo</h1><p class="muted">Doanh thu, lợi nhuận, công nợ và hiệu suất freelancer. Có thể in hoặc lưu PDF (Ctrl+P).</p></div></div>
+
+<section class="card flush" style="margin-bottom: var(--sp-6)" id="profit">
+  <div class="card-head"><h2>Lợi nhuận theo Order</h2><span class="small muted">50 Order có hợp đồng gần nhất</span></div>
+  <div class="table-wrap"><table class="table">
+    <thead><tr><th>Order</th><th>Trạng thái</th><th class="num">Giá trị HĐ</th><th class="num">Doanh thu thuần</th><th class="num">Chi freelancer</th><th class="num">Phần M&amp;T</th><th class="num">Biên M&amp;T</th></tr></thead>
+    <tbody><% for (const o of r.orderProfit) { %>
+      <tr><td><a class="mono" href="/orders/<%= o.id %>"><%= o.code %></a> <span class="small"><%= o.title %></span></td><td><%- badge(L.ORDER_STATUS, o.status) %></td>
+        <td class="num"><%= fmt.num(o.value) %></td><td class="num"><%= fmt.num(o.net) %></td><td class="num"><%= fmt.num(o.freelancer_cost) %></td><td class="num"><strong><%= fmt.num(o.mt_share) %></strong></td><td class="num"><%= o.margin_pct == null ? '—' : String(o.margin_pct).replace('.', ',') + '%' %></td></tr>
+    <% } %></tbody>
+    <% if (r.orderProfit.length) { const t = r.orderProfit.reduce((s, o) => ({ v: s.v + o.value, n: s.n + o.net, f: s.f + o.freelancer_cost, m: s.m + o.mt_share }), { v: 0, n: 0, f: 0, m: 0 }); %>
+      <tfoot><tr><td colspan="2">Tổng</td><td class="num"><%= fmt.num(t.v) %></td><td class="num"><%= fmt.num(t.n) %></td><td class="num"><%= fmt.num(t.f) %></td><td class="num"><%= fmt.num(t.m) %></td><td class="num"><%= t.n ? (Math.round(1000 * t.m / t.n) / 10).toString().replace('.', ',') + '%' : '—' %></td></tr></tfoot>
+    <% } %>
+  </table></div>
+</section>
+
+<div class="grid grid-2" style="margin-bottom: var(--sp-6)">
+  <section class="card flush">
+    <div class="card-head"><h2>Theo loại dịch vụ</h2></div>
+    <% const sMax = Math.max(1, ...r.byService.map((s) => s.net)); %>
+    <div class="table-wrap"><table class="table">
+      <thead><tr><th>Dịch vụ</th><th class="num">Order</th><th class="num">Doanh thu thuần</th><th style="width:30%"><span class="sr-only">Tỷ trọng</span></th></tr></thead>
+      <tbody><% for (const s of r.byService) { %><tr><td><%= s.service_type %></td><td class="num"><%= s.orders %></td><td class="num"><%= fmt.num(s.net) %></td><td><div class="bar"><span style="width: <%= Math.round(100 * Math.max(0, s.net) / sMax) %>%"></span></div></td></tr><% } %></tbody>
+    </table></div>
+  </section>
+  <section class="card flush" id="receivables">
+    <div class="card-head"><h2>Công nợ phải thu</h2></div>
+    <% if (!r.receivables.length) { %><div class="empty"><p>Không có công nợ.</p></div><% } else { %>
+    <div class="table-wrap"><table class="table">
+      <thead><tr><th>Order</th><th class="num">HĐ</th><th class="num">Đã thu</th><th class="num">Còn lại</th><th class="num">Tuổi</th></tr></thead>
+      <tbody><% for (const x of r.receivables) { %><tr><td><a class="mono" href="/orders/<%= x.id %>"><%= x.code %></a></td><td class="num"><%= fmt.num(x.value) %></td><td class="num"><%= fmt.num(x.paid) %></td><td class="num"><strong><%= fmt.num(x.outstanding) %></strong></td><td class="num"><%= x.age_days %>d</td></tr><% } %></tbody>
+    </table></div><% } %>
+  </section>
+</div>
+
+<section class="card flush" id="freelancers">
+  <div class="card-head"><h2>Hiệu suất freelancer</h2><span class="small muted">Đúng hạn = nhiệm vụ có hạn &amp; đã hoàn thành trước hạn · Tỷ lệ sửa = sản phẩm bị yêu cầu sửa / đã nộp</span></div>
+  <% if (!r.freelancers.length) { %><div class="empty"><p>Chưa có dữ liệu.</p></div><% } else { %>
+  <div class="table-wrap"><table class="table">
+    <thead><tr><th>Freelancer</th><th>Vai trò đã làm</th><th>Sẵn sàng</th><th class="num">Order</th><th class="num">Hoàn tất</th><th class="num">Đúng hạn</th><th class="num">Tỷ lệ sửa</th><th class="num">Thu nhập (duyệt + chi)</th></tr></thead>
+    <tbody><% for (const f of r.freelancers) { %>
+      <tr><td><a class="mono small" href="/admin/accounts/<%= f.id %>"><%= f.code %></a> <%= f.full_name %></td>
+        <td><% for (const role of (f.roles || '').split(',').filter(Boolean)) { %><span class="tag"><%= L.ROLES[role].label %></span> <% } %></td>
+        <td class="small"><%= { AVAILABLE: 'Sẵn sàng', BUSY: 'Bận', AWAY: 'Tạm nghỉ' }[f.availability] || '—' %></td>
+        <td class="num"><%= f.orders %></td><td class="num"><%= f.completed %></td>
+        <td class="num"><%= f.on_time_pct == null ? '—' : f.on_time_pct + '%' %></td><td class="num"><%= f.revision_pct == null ? '—' : f.revision_pct + '%' %></td>
+        <td class="num"><%= fmt.vnd(f.earned) %></td></tr>
+    <% } %></tbody>
+  </table></div><% } %>
+</section>
+<%- include('../partials/app-end') %>

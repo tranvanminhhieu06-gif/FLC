@@ -1,0 +1,31 @@
+<%- include('../partials/app-start') %>
+<div class="page-head"><div><h1>Quản lý Order</h1><p class="muted">Mọi Order trong hệ thống. Bấm vào mã để xem và thao tác.</p></div></div>
+<form class="row" method="get" style="margin-bottom: var(--sp-4)">
+  <label class="sr-only" for="q">Tìm</label>
+  <input class="input" id="q" name="q" value="<%= q %>" placeholder="Mã Order, tên, mã khách…" style="max-width:320px">
+  <label class="sr-only" for="status">Trạng thái</label>
+  <select class="select" id="status" name="status" style="max-width:240px">
+    <option value="">Mọi trạng thái</option>
+    <% for (const [k, v] of Object.entries(L.ORDER_STATUS)) { %><option value="<%= k %>" <%- status === k ? 'selected' : '' %>><%= v.label %> (<%= counts[k] || 0 %>)</option><% } %>
+  </select>
+  <button class="btn btn-secondary">Lọc</button>
+</form>
+<div class="card flush">
+  <% if (!list.length) { %><div class="empty"><%- icon('briefcase') %><p>Không có Order phù hợp.</p></div><% } else { %>
+  <div class="table-wrap"><table class="table">
+    <thead><tr><th>Mã</th><th>Order</th><th>Khách</th><th>Account</th><th>Trạng thái</th><th class="num">Giá trị HĐ</th><th class="num">Đã thu</th><th>Cập nhật</th></tr></thead>
+    <tbody><% for (const o of list) { %>
+      <tr>
+        <td class="mono"><a href="/orders/<%= o.id %>"><%= o.code %></a></td>
+        <td><%= o.title %><div class="small muted"><%= o.service_type %></div></td>
+        <td class="mono small"><%= o.customer_code %></td>
+        <td class="mono small"><%= o.account_code || '—' %></td>
+        <td><%- badge(L.ORDER_STATUS, o.status) %><% if (o.deposit_exception) { %> <span class="badge warn" title="Ngoại lệ đặt cọc">Ngoại lệ</span><% } %></td>
+        <td class="num"><%= fmt.vnd(o.value) %></td>
+        <td class="num"><%= o.value ? fmt.vnd(o.collected) : '—' %></td>
+        <td class="muted nowrap"><%= fmt.date(o.updated_at) %></td>
+      </tr>
+    <% } %></tbody>
+  </table></div><% } %>
+</div>
+<%- include('../partials/app-end') %>

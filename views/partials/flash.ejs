@@ -1,0 +1,6 @@
+<% for (const f of flash) { %>
+  <div class="alert <%= f.type %>" role="<%= f.type === 'danger' ? 'alert' : 'status' %>">
+    <%- icon(f.type === 'success' ? 'check' : f.type === 'danger' ? 'alert' : 'bell') %>
+    <div><%= f.message %></div>
+  </div>
+<% } %>

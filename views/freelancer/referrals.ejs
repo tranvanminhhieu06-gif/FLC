@@ -1,0 +1,44 @@
+<%- include('../partials/app-start') %>
+<div class="page-head"><div><h1>Giới thiệu khách hàng</h1><p class="muted">Khách đăng ký bằng mã của bạn sẽ được tự động gắn vào mọi Order họ gửi.</p></div></div>
+<div class="split">
+  <div class="card flush">
+    <div class="card-head"><h2>Khách hàng tiềm năng</h2></div>
+    <% if (!leads.length) { %><div class="empty"><%- icon('link') %><p>Chưa có khách nào. Chia sẻ mã của bạn để bắt đầu.</p></div><% } else { %>
+    <div class="table-wrap"><table class="table">
+      <thead><tr><th>Khách</th><th>Liên hệ</th><th>Trạng thái</th><th>Order</th><th></th></tr></thead>
+      <tbody><% for (const l of leads) { %>
+        <tr>
+          <td><strong><%= l.name %></strong><div class="small muted"><%= l.need || '' %></div></td>
+          <td class="small"><%= l.contact %></td>
+          <td><%- badge(L.LEAD_STATUS, l.status) %><% if (l.customer_code) { %> <span class="mono small"><%= l.customer_code %></span><% } %></td>
+          <td class="small"><% for (const s of (l.orders || '').split(',').filter(Boolean)) { const [code, st] = s.split(':'); %><div><span class="mono"><%= code %></span> <%- badge(L.ORDER_STATUS, st) %></div><% } %></td>
+          <td><% if (l.status !== 'CONVERTED') { %>
+            <form method="post" action="/fl/referrals/<%= l.id %>/status" class="row">
+              <input type="hidden" name="_csrf" value="<%= csrf() %>">
+              <select class="select" name="status" aria-label="Cập nhật trạng thái" style="min-height:36px; width:auto">
+                <% for (const s of ['NEW', 'CONTACTED', 'LOST']) { %><option value="<%= s %>" <%- l.status === s ? 'selected' : '' %>><%= L.LEAD_STATUS[s].label %></option><% } %>
+              </select>
+              <button class="btn btn-secondary btn-sm">Lưu</button>
+            </form><% } %></td>
+        </tr>
+      <% } %></tbody>
+    </table></div><% } %>
+  </div>
+  <div class="stack">
+    <div class="card">
+      <h3>Mã giới thiệu của bạn</h3>
+      <p class="mono" style="font-size: var(--fs-xl); font-weight:700; color: var(--c-brand-700)"><%= memberCode %></p>
+      <p class="small muted">Link đăng ký có sẵn mã của bạn:</p>
+      <input class="input mono small" readonly value="/register/customer?ref=<%= encodeURIComponent(memberCode) %>" aria-label="Link giới thiệu">
+    </div>
+    <form class="card" method="post" action="/fl/referrals">
+      <input type="hidden" name="_csrf" value="<%= csrf() %>">
+      <h3>Ghi nhận khách tiềm năng</h3>
+      <%- include('../partials/field', { name: 'name', label: 'Tên khách / doanh nghiệp', required: true }) %>
+      <%- include('../partials/field', { name: 'contact', label: 'Gmail hoặc SĐT', required: true, hint: 'Nếu khách đăng ký bằng thông tin này, hệ thống tự liên kết' }) %>
+      <%- include('../partials/field', { name: 'need', label: 'Nhu cầu', type: 'textarea', attrs: 'rows="2"' }) %>
+      <button class="btn btn-primary">Ghi nhận</button>
+    </form>
+  </div>
+</div>
+<%- include('../partials/app-end') %>

@@ -1,0 +1,46 @@
+<%- include('../partials/app-start') %>
+<div class="page-head"><div><h1>Hồ sơ năng lực</h1><p class="muted"><span class="mono"><%= user.code %></span> · mã thành viên <span class="mono"><%= profile.member_code %></span> · <%- badge(L.ACCOUNT_STATUS, user.status) %></p></div></div>
+<div class="split">
+  <form class="card" method="post" action="/fl/profile">
+    <input type="hidden" name="_csrf" value="<%= csrf() %>">
+    <div class="field">
+      <label for="f_availability">Mức độ sẵn sàng</label>
+      <select class="select" id="f_availability" name="availability">
+        <% for (const [k, t] of Object.entries({ AVAILABLE: 'Sẵn sàng nhận việc', BUSY: 'Đang bận, nhận thêm ít', AWAY: 'Tạm nghỉ' })) { %><option value="<%= k %>" <%- profile.availability === k ? 'selected' : '' %>><%= t %></option><% } %>
+      </select>
+    </div>
+    <%- include('../partials/field', { name: 'skills', label: 'Kỹ năng', value: profile.skills }) %>
+    <%- include('../partials/field', { name: 'experience', label: 'Kinh nghiệm', type: 'textarea', value: profile.experience }) %>
+    <%- include('../partials/field', { name: 'portfolio', label: 'Sản phẩm đã từng làm', type: 'textarea', value: profile.portfolio }) %>
+    <button class="btn btn-primary"><%= user.status === 'NEEDS_INFO' ? 'Gửi bổ sung cho M&T' : 'Lưu hồ sơ' %></button>
+  </form>
+  <div class="stack">
+    <div class="card">
+      <h3>Vai trò</h3>
+      <ul class="timeline">
+        <% for (const r of user.allRoles) { %><li><strong><%= L.ROLES[r.role].full %></strong> <%- badge({ PENDING: { label: 'Chờ duyệt', tone: 'warn' }, ACTIVE: { label: 'Đã cấp', tone: 'success' }, REJECTED: { label: 'Không cấp', tone: 'neutral' } }, r.status) %></li><% } %>
+      </ul>
+      <% const missing = L.FREELANCER_ROLES.filter((x) => !user.allRoles.some((r) => r.role === x && r.status !== 'REJECTED')); %>
+      <% if (user.status === 'ACTIVE' && missing.length) { %>
+        <form method="post" action="/fl/roles" class="row">
+          <input type="hidden" name="_csrf" value="<%= csrf() %>">
+          <select class="select" name="role" aria-label="Vai trò muốn đăng ký thêm" style="width:auto; flex:1"><% for (const x of missing) { %><option value="<%= x %>"><%= L.ROLES[x].full %></option><% } %></select>
+          <button class="btn btn-secondary btn-sm">Xin thêm vai trò</button>
+        </form>
+      <% } %>
+    </div>
+    <div class="card">
+      <h3>Thông tin xác minh</h3>
+      <dl class="kv">
+        <dt>Ngày sinh</dt><dd><%= fmt.date(profile.dob) %></dd>
+        <dt>Gmail</dt><dd><%= user.email %></dd>
+        <dt>Điện thoại</dt><dd><%= user.phone %></dd>
+        <dt>Ngân hàng</dt><dd><%= profile.bank_name %> · ****<%= String(profile.bank_account || '').slice(-4) %></dd>
+        <dt>CV</dt><dd><a href="/files/profile/<%= user.id %>/cv">Xem CV</a></dd>
+        <dt>CCCD</dt><dd class="muted">Đã nộp (chỉ M&amp;T xem)</dd>
+      </dl>
+      <p class="small muted" style="margin-top: var(--sp-3)">Cần đổi thông tin ngân hàng hoặc CCCD? Gửi yêu cầu tới M&amp;T để được xác minh lại.</p>
+    </div>
+  </div>
+</div>
+<%- include('../partials/app-end') %>

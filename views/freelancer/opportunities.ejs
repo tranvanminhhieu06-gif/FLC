@@ -1,0 +1,28 @@
+<%- include('../partials/app-start') %>
+<div class="page-head"><div><h1>Cơ hội</h1><p class="muted">Người nhận trước được ưu tiên. Thông tin liên hệ của khách chỉ hiện sau khi bạn nhận Order.</p></div></div>
+
+<% const section = (title, list, role, empty) => { %>
+  <div class="card flush" style="margin-bottom: var(--sp-6)">
+    <div class="card-head"><h2><%= title %></h2><span class="badge info"><%= list.length %> Order</span></div>
+    <% if (!list.length) { %><div class="empty"><%- icon('inbox') %><p><%= empty %></p></div><% } else { %>
+    <div class="table-wrap"><table class="table">
+      <thead><tr><th>Mã</th><th>Order</th><th>Dịch vụ</th><th class="num">Ngân sách</th><th>Hạn mong muốn</th><th>Trạng thái</th><th></th></tr></thead>
+      <tbody><% for (const o of list) { %>
+        <tr>
+          <td class="mono"><a href="/orders/<%= o.id %>"><%= o.code %></a></td>
+          <td><strong><%= o.title %></strong><div class="small muted"><%= (o.description || '').slice(0, 120) %><%= (o.description || '').length > 120 ? '…' : '' %></div></td>
+          <td class="muted"><%= o.service_type %></td>
+          <td class="num"><%= fmt.vnd(o.budget) %></td>
+          <td class="nowrap muted"><%= fmt.date(o.deadline) %></td>
+          <td><%- badge(L.ORDER_STATUS, o.status) %></td>
+          <td><form method="post" action="/fl/opportunities/<%= o.id %>/claim"><input type="hidden" name="_csrf" value="<%= csrf() %>"><input type="hidden" name="role" value="<%= role %>"><button class="btn btn-primary btn-sm">Nhận <%= L.ROLES[role].label %></button></form></td>
+        </tr>
+      <% } %></tbody>
+    </table></div>
+    <% } %>
+  </div>
+<% } %>
+
+<% if (user.roles.includes('SALES')) section('Order chờ Sales tiếp nhận', intake, 'SALES', 'Hiện chưa có Order mới.'); %>
+<% if (user.roles.includes('ACCOUNT')) section('Order cần Account phối hợp', needAccount, 'ACCOUNT', 'Tất cả Order đều đã có Account.'); %>
+<%- include('../partials/app-end') %>

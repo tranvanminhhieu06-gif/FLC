@@ -1,0 +1,35 @@
+<%- include('../partials/app-start') %>
+<div class="page-head">
+  <div><h1>Order của tôi</h1><p class="muted">Theo dõi báo giá, tiến độ, nghiệm thu và thanh toán.</p></div>
+  <a class="btn btn-accent" href="/customer/orders/new"><%- icon('plus') %>Đăng Order mới</a>
+</div>
+
+<div class="grid grid-4" style="margin-bottom: var(--sp-6)">
+  <div class="stat"><div class="stat-label">Đang xử lý</div><div class="stat-value"><%= stats.active %></div></div>
+  <div class="stat"><div class="stat-label">Chờ bạn phản hồi</div><div class="stat-value" style="color:var(--c-accent-700)"><%= stats.waiting %></div><div class="stat-sub">Báo giá, cọc, demo, thanh toán</div></div>
+  <div class="stat"><div class="stat-label">Đã hoàn tất</div><div class="stat-value"><%= stats.done %></div></div>
+  <div class="stat"><div class="stat-label">Đã thanh toán</div><div class="stat-value" style="font-size:var(--fs-xl)"><%= fmt.vnd(stats.spent) %></div></div>
+</div>
+
+<div class="card flush">
+  <% if (!list.length) { %>
+    <div class="empty"><%- icon('file') %><p>Bạn chưa có Order nào.</p><a class="btn btn-primary" href="/customer/orders/new">Đăng Order đầu tiên</a></div>
+  <% } else { %>
+    <div class="table-wrap"><table class="table">
+      <thead><tr><th>Mã</th><th>Tên Order</th><th>Dịch vụ</th><th>Trạng thái</th><th class="num">Giá trị HĐ</th><th>Cập nhật</th></tr></thead>
+      <tbody>
+        <% for (const o of list) { %>
+          <tr>
+            <td class="mono"><a href="/orders/<%= o.id %>"><%= o.code %></a></td>
+            <td><a href="/orders/<%= o.id %>" style="color:inherit"><%= o.title %></a></td>
+            <td class="muted"><%= o.service_type %></td>
+            <td><%- badge(L.ORDER_STATUS, o.status) %></td>
+            <td class="num"><%= fmt.vnd(o.value) %></td>
+            <td class="muted nowrap"><%= fmt.date(o.updated_at) %></td>
+          </tr>
+        <% } %>
+      </tbody>
+    </table></div>
+  <% } %>
+</div>
+<%- include('../partials/app-end') %>

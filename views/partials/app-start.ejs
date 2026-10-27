@@ -1,0 +1,79 @@
+<%- include('head') %>
+<%
+  const r = new Set(user.roles || []);
+  let groups;
+  if (user.kind === 'admin') {
+    const c = locals.navCounts || {};
+    groups = [
+      { label: 'Vận hành', items: [
+        { href: '/admin', icon: 'chart', text: 'Bảng điều khiển', exact: true },
+        { href: '/admin/accounts', icon: 'users', text: 'Duyệt tài khoản' },
+        { href: '/admin/orders', icon: 'briefcase', text: 'Quản lý Order' },
+        { href: '/admin/disputes', icon: 'alert', text: 'Khiếu nại' },
+      ]},
+      { label: 'Tài chính', items: [
+        { href: '/admin/finance', icon: 'wallet', text: 'Đối soát & chi trả' },
+        { href: '/admin/rates', icon: 'sliders', text: 'Tỷ lệ doanh thu' },
+        { href: '/admin/reports', icon: 'list', text: 'Báo cáo' },
+      ]},
+      { label: 'Hệ thống', items: [
+        { href: '/admin/audit', icon: 'history', text: 'Nhật ký' },
+      ]},
+    ];
+  } else if (user.kind === 'freelancer') {
+    const items = [{ href: '/fl', icon: 'home', text: 'Tổng quan', exact: true }];
+    if (r.has('SALES') || r.has('ACCOUNT')) items.push({ href: '/fl/opportunities', icon: 'target', text: 'Cơ hội' });
+    if (r.size) items.push({ href: '/fl/invitations', icon: 'inbox', text: 'Lời mời' });
+    if (r.has('REFERRER')) items.push({ href: '/fl/referrals', icon: 'link', text: 'Giới thiệu' });
+    items.push({ href: '/fl/earnings', icon: 'wallet', text: 'Thu nhập' });
+    items.push({ href: '/fl/profile', icon: 'user', text: 'Hồ sơ năng lực' });
+    groups = [{ label: 'Freelancer Portal', items }];
+  } else {
+    groups = [{ label: 'Customer Portal', items: [
+      { href: '/customer', icon: 'home', text: 'Order của tôi', exact: true },
+      { href: '/customer/orders/new', icon: 'plus', text: 'Đăng Order' },
+      { href: '/customer/profile', icon: 'user', text: 'Hồ sơ' },
+    ]}];
+  }
+  const isCurrent = (it) => it.exact ? path === it.href : (path === it.href || path.startsWith(it.href + '/'));
+%>
+<body>
+<a class="sr-only" href="#main">Bỏ qua tới nội dung</a>
+<div class="app" id="app">
+  <aside class="sidebar" id="sidebar" aria-label="Điều hướng chính">
+    <a class="brand" href="/"><span class="logo-mark" aria-hidden="true">F</span><span>FLC<small><%= user.kind === 'admin' ? 'M&T Admin' : user.kind === 'freelancer' ? 'Freelancer' : 'Khách hàng' %></small></span></a>
+    <% for (const g of groups) { %>
+      <div class="nav-group">
+        <div class="nav-label"><%= g.label %></div>
+        <nav class="nav">
+          <% for (const it of g.items) { %>
+            <a href="<%= it.href %>" <%- isCurrent(it) ? 'aria-current="page"' : '' %>><%- icon(it.icon) %><span><%= it.text %></span></a>
+          <% } %>
+        </nav>
+      </div>
+    <% } %>
+    <div class="nav-group">
+      <nav class="nav">
+        <a href="/notifications" <%- path === '/notifications' ? 'aria-current="page"' : '' %>><%- icon('bell') %><span>Thông báo</span><% if (user.unread) { %><span class="count"><%= user.unread %><span class="sr-only"> chưa đọc</span></span><% } %></a>
+      </nav>
+    </div>
+  </aside>
+  <div class="main">
+    <header class="topbar">
+      <button class="btn btn-secondary btn-sm menu-toggle" type="button" data-toggle-nav aria-controls="sidebar" aria-expanded="false"><%- icon('menu') %><span class="sr-only">Mở menu</span></button>
+      <div class="small muted"><% if (user.kind === 'freelancer' && user.roles.length) { %>Vai trò: <% for (const role of user.roles) { %><span class="tag"><%= L.ROLES[role].label %></span> <% } %><% } %></div>
+      <div class="row">
+        <span class="small"><strong><%= user.full_name || user.email || user.phone %></strong> <span class="muted mono"><%= user.code %></span></span>
+        <form method="post" action="/logout"><input type="hidden" name="_csrf" value="<%= csrf() %>"><button class="btn btn-ghost btn-sm" type="submit"><%- icon('logout') %>Đăng xuất</button></form>
+      </div>
+    </header>
+    <main class="content" id="main">
+      <% if (user.kind !== 'admin' && user.status !== 'ACTIVE') { %>
+        <div class="alert <%= user.status === 'NEEDS_INFO' ? 'info' : user.status === 'PENDING' ? 'warn' : 'danger' %>" role="status">
+          <%- icon('shield') %>
+          <div><strong>Tài khoản: <%= L.ACCOUNT_STATUS[user.status].label %>.</strong>
+            <%= user.status === 'PENDING' ? 'M&T đang kiểm định hồ sơ. Bạn vẫn có thể ' + (user.kind === 'customer' ? 'tạo bản nháp Order.' : 'cập nhật hồ sơ năng lực.') : (user.status_note || '') %>
+          </div>
+        </div>
+      <% } %>
+      <%- include('flash') %>

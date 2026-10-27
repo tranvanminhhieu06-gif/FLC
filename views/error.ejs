@@ -1,0 +1,8 @@
+<% if (user) { %><%- include('partials/app-start') %><% } else { %><%- include('partials/public-start') %><main class="container section" id="main"><% } %>
+  <div class="card empty" style="max-width:560px; margin: var(--sp-10) auto">
+    <%- icon('alert') %>
+    <h1><%= title %></h1>
+    <p><%= message %></p>
+    <a class="btn btn-primary" href="<%= user ? (user.kind === 'admin' ? '/admin' : user.kind === 'freelancer' ? '/fl' : '/customer') : '/' %>">Về trang chính</a>
+  </div>
+<% if (user) { %><%- include('partials/app-end') %><% } else { %></main><%- include('partials/public-end') %><% } %>

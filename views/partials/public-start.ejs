@@ -1,0 +1,15 @@
+<%- include('head') %>
+<body>
+<header class="site-header">
+  <div class="container">
+    <a class="logo" href="/"><span class="logo-mark" aria-hidden="true">F</span>FLC</a>
+    <nav class="row" aria-label="Tài khoản">
+      <% if (user) { %>
+        <a class="btn btn-primary btn-sm" href="<%= user.kind === 'admin' ? '/admin' : user.kind === 'freelancer' ? '/fl' : '/customer' %>">Vào trang làm việc</a>
+      <% } else { %>
+        <a class="btn btn-ghost btn-sm" href="/login">Đăng nhập</a>
+        <a class="btn btn-primary btn-sm" href="/register">Đăng ký</a>
+      <% } %>
+    </nav>
+  </div>
+</header>

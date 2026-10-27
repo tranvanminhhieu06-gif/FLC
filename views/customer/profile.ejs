@@ -1,0 +1,22 @@
+<%- include('../partials/app-start') %>
+<div class="page-head"><div><h1>Hồ sơ khách hàng</h1><p class="muted">Mã khách hàng: <span class="mono"><%= user.code %></span> · <%- badge(L.ACCOUNT_STATUS, user.status) %></p></div></div>
+<div class="split">
+  <form class="card" method="post" action="/customer/profile">
+    <input type="hidden" name="_csrf" value="<%= csrf() %>">
+    <%- include('../partials/field', { name: 'full_name', label: 'Họ tên / người liên hệ', value: user.full_name }) %>
+    <%- include('../partials/field', { name: 'company', label: 'Doanh nghiệp', value: profile.company }) %>
+    <%- include('../partials/field', { name: 'tax_code', label: 'Mã số thuế', value: profile.tax_code }) %>
+    <%- include('../partials/field', { name: 'address', label: 'Địa chỉ', value: profile.address }) %>
+    <button class="btn btn-primary">Lưu</button>
+  </form>
+  <div class="card">
+    <h3>Đăng nhập</h3>
+    <dl class="kv">
+      <dt>Gmail</dt><dd><%= user.email || '—' %></dd>
+      <dt>Điện thoại</dt><dd><%= user.phone || '—' %></dd>
+      <dt>Người giới thiệu</dt><dd><%= profile.referrer_code || '—' %></dd>
+      <dt>Ngày tạo</dt><dd><%= fmt.date(user.created_at) %></dd>
+    </dl>
+  </div>
+</div>
+<%- include('../partials/app-end') %>

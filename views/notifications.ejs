@@ -1,0 +1,23 @@
+<%- include('partials/app-start') %>
+<div class="page-head">
+  <div><h1>Thông báo</h1><p class="muted">100 thông báo gần nhất</p></div>
+  <form method="post" action="/notifications/read-all"><input type="hidden" name="_csrf" value="<%= csrf() %>"><button class="btn btn-secondary btn-sm">Đánh dấu đã đọc tất cả</button></form>
+</div>
+<div class="card flush">
+  <% if (!items.length) { %>
+    <div class="empty"><%- icon('bell') %><p>Chưa có thông báo nào.</p></div>
+  <% } else { %>
+    <div class="table-wrap"><table class="table">
+      <tbody>
+        <% for (const n of items) { %>
+          <tr>
+            <td style="width:10px"><% if (!n.read_at) { %><span class="badge brand">Mới</span><% } %></td>
+            <td><a href="/notifications/<%= n.id %>" style="<%= n.read_at ? 'color:var(--c-text-muted)' : 'font-weight:600' %>"><%= n.title %></a></td>
+            <td class="num muted"><%= fmt.dateTime(n.created_at) %></td>
+          </tr>
+        <% } %>
+      </tbody>
+    </table></div>
+  <% } %>
+</div>
+<%- include('partials/app-end') %>

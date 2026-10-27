@@ -1,0 +1,49 @@
+<%- include('../partials/app-start') %>
+<div class="page-head">
+  <div>
+    <span class="eyebrow">Bước 3 · Đăng Order</span>
+    <h1><%= order ? `Sửa bản nháp ${order.code}` : 'Đăng Order mới' %></h1>
+    <p class="muted">Mô tả càng rõ, báo giá càng sát. Bạn có thể lưu nháp và gửi sau.</p>
+  </div>
+</div>
+<% if (user.status !== 'ACTIVE') { %>
+  <div class="alert info" role="status"><%- icon('shield') %><div>Tài khoản đang chờ duyệt: bạn có thể lưu bản nháp, còn nút <strong>Gửi Order</strong> sẽ mở sau khi M&amp;T duyệt tài khoản.</div></div>
+<% } %>
+<form class="split" method="post" action="<%= order ? `/customer/orders/${order.id}` : '/customer/orders' %>?_csrf=<%= csrf() %>" enctype="multipart/form-data" novalidate>
+  <div class="card">
+    <%- include('../partials/field', { name: 'title', label: 'Tên Order', required: true, value: v.title, hint: 'VD: Website giới thiệu công ty 5 trang' }) %>
+    <div class="field">
+      <label for="f_service_type">Loại dịch vụ <span class="req">*</span></label>
+      <select class="select" id="f_service_type" name="service_type" required <%- errors.service_type ? 'aria-invalid="true"' : '' %>>
+        <option value="">— Chọn —</option>
+        <% for (const s of L.SERVICE_TYPES) { %><option <%- v.service_type === s ? 'selected' : '' %>><%= s %></option><% } %>
+      </select>
+      <% if (errors.service_type) { %><span class="error"><%= errors.service_type %></span><% } %>
+    </div>
+    <%- include('../partials/field', { name: 'description', label: 'Mô tả yêu cầu', type: 'textarea', required: true, value: v.description }) %>
+    <%- include('../partials/field', { name: 'goals', label: 'Mục tiêu', type: 'textarea', value: v.goals, hint: 'Bạn muốn đạt được điều gì sau dự án?' }) %>
+    <%- include('../partials/field', { name: 'deliverables', label: 'Sản phẩm cần bàn giao', type: 'textarea', value: v.deliverables, hint: 'VD: mã nguồn, file thiết kế gốc, tài liệu hướng dẫn' }) %>
+  </div>
+  <div class="stack">
+    <div class="card">
+      <%- include('../partials/field', { name: 'budget', label: 'Ngân sách dự kiến (VND)', value: v.budget ? fmt.num(v.budget) : '', attrs: 'inputmode="numeric" data-money', errors }) %>
+      <%- include('../partials/field', { name: 'deadline', label: 'Thời hạn mong muốn', type: 'date', value: v.deadline }) %>
+      <%- include('../partials/field', { name: 'contact_info', label: 'Thông tin liên hệ cho dự án', type: 'textarea', value: v.contact_info, attrs: 'rows="2"' }) %>
+      <div class="field">
+        <label for="f_refs">Tài liệu, hình ảnh tham khảo</label>
+        <input class="input" id="f_refs" type="file" name="refs" multiple>
+        <span class="hint">Tối đa 8 tệp, mỗi tệp 25MB</span>
+      </div>
+    </div>
+    <div class="card">
+      <div class="row" style="margin-bottom: var(--sp-2)"><%- icon('lock') %><strong class="small">Thông tin xuất hóa đơn</strong></div>
+      <p class="small muted">Chỉ M&amp;T Admin xem được mục này. Freelancer không thấy.</p>
+      <%- include('../partials/field', { name: 'invoice_info', label: 'Tên công ty, MST, địa chỉ, email nhận hóa đơn', type: 'textarea', value: v.invoice_info, attrs: 'rows="3"' }) %>
+    </div>
+    <div class="form-actions">
+      <button class="btn btn-secondary" name="intent" value="draft" type="submit">Lưu nháp</button>
+      <button class="btn btn-primary" name="intent" value="submit" type="submit" <%- user.status !== 'ACTIVE' ? 'disabled' : '' %>>Gửi Order</button>
+    </div>
+  </div>
+</form>
+<%- include('../partials/app-end') %>

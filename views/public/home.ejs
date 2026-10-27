@@ -1,0 +1,63 @@
+<%- include('../partials/public-start') %>
+<main id="main">
+  <section class="hero">
+    <div class="container">
+      <span class="eyebrow">Hệ sinh thái dịch vụ FLC</span>
+      <h1>Đăng một yêu cầu. Có cả một đội ngũ chịu trách nhiệm.</h1>
+      <p class="lead">FLC kết nối doanh nghiệp với mạng lưới freelancer đã được M&amp;T kiểm định. Mỗi Order đều có Sales tư vấn, Account chăm sóc, PM kiểm soát chất lượng, và quy trình tài chính minh bạch từ đặt cọc đến nghiệm thu.</p>
+      <div class="row">
+        <a class="btn btn-accent" href="/register/customer"><%- icon('plus') %>Đăng Order đầu tiên</a>
+        <a class="btn btn-secondary" href="/register/freelancer"><%- icon('briefcase') %>Tham gia làm Freelancer</a>
+      </div>
+      <p class="small muted" style="margin-top: var(--sp-4)"><%= stats.freelancers %> freelancer đã được duyệt · <%= stats.done %> dự án đã hoàn tất</p>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="container">
+      <h2>Quy trình 7 bước, không ai làm việc trong bóng tối</h2>
+      <p class="muted">Order không tự động giao cho người nhận nhanh nhất. Mỗi bước đều có người chịu trách nhiệm, có điều kiện chuyển bước và được lưu vết.</p>
+      <ol class="flow" style="margin-top: var(--sp-5)">
+        <% for (const s of L.STEPS) { %><li><b><%= s.name %></b><br><span class="muted"><%= s.sub %></span></li><% } %>
+      </ol>
+    </div>
+  </section>
+
+  <section class="section" style="background: var(--c-surface); border-block: 1px solid var(--c-border)">
+    <div class="container grid grid-3">
+      <div class="feature">
+        <div class="icon-box"><%- icon('shield') %></div>
+        <h3>Đặt cọc trước, triển khai sau</h3>
+        <p class="muted">Dự án chỉ được triển khai chính thức sau khi đặt cọc. File gốc chỉ mở khi bạn đã thanh toán đủ, còn bản demo và preview luôn xem được để duyệt.</p>
+      </div>
+      <div class="feature">
+        <div class="icon-box"><%- icon('users') %></div>
+        <h3>Đúng người, đúng vai</h3>
+        <p class="muted">Account đánh giá độ phức tạp, ghép PM và chuyên viên theo năng lực. M&amp;T duyệt và khóa danh sách nhân sự trước khi bắt đầu.</p>
+      </div>
+      <div class="feature">
+        <div class="icon-box"><%- icon('wallet') %></div>
+        <h3>Hoa hồng minh bạch</h3>
+        <p class="muted">Tỷ lệ được chốt riêng cho từng Order. Hoa hồng tính trên doanh thu thực thu và chỉ được chi trả sau khi M&amp;T đối soát.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="container grid grid-2">
+      <div class="card">
+        <span class="eyebrow">Khách hàng</span>
+        <h3>Chỉ cần số điện thoại hoặc Gmail</h3>
+        <p class="muted">Đăng ký trong một phút. Nếu bạn được ai đó giới thiệu, nhập mã thành viên của họ khi đăng ký.</p>
+        <a class="btn btn-primary" href="/register/customer">Đăng ký khách hàng</a>
+      </div>
+      <div class="card">
+        <span class="eyebrow">Freelancer</span>
+        <h3>Referrer · Sales · Account · PM · Project</h3>
+        <p class="muted">Đăng ký một hoặc nhiều vai trò. Hồ sơ được M&amp;T kiểm định trước khi bạn nhận việc.</p>
+        <a class="btn btn-secondary" href="/register/freelancer">Gửi hồ sơ năng lực</a>
+      </div>
+    </div>
+  </section>
+</main>
+<%- include('../partials/public-end') %>

@@ -1,0 +1,79 @@
+<%- include('../partials/public-start') %>
+<main class="auth-wrap" id="main">
+  <div class="card auth-card wide">
+    <span class="eyebrow">Bước 1 · Freelancer</span>
+    <h1>Gửi hồ sơ năng lực</h1>
+    <p class="muted">Hồ sơ sẽ được M&amp;T kiểm định trước khi kích hoạt. Ảnh CCCD và số tài khoản chỉ M&amp;T xem được.</p>
+    <% if (errors.upload) { %><div class="alert danger" role="alert"><%- icon('alert') %><div><%= errors.upload %></div></div><% } %>
+    <% if (Object.keys(errors).length && !errors.upload) { %><div class="alert danger" role="alert"><%- icon('alert') %><div>Vui lòng kiểm tra lại các trường được đánh dấu. Tệp đính kèm cần chọn lại.</div></div><% } %>
+    <form method="post" action="/register/freelancer?_csrf=<%= csrf() %>" enctype="multipart/form-data" novalidate>
+      <fieldset>
+        <legend>Thông tin cá nhân</legend>
+        <div class="form-grid">
+          <%- include('../partials/field', { name: 'full_name', label: 'Họ và tên', required: true, value: v.full_name, attrs: 'autocomplete="name"' }) %>
+          <%- include('../partials/field', { name: 'dob', label: 'Ngày sinh', type: 'date', required: true, value: v.dob }) %>
+          <%- include('../partials/field', { name: 'phone', label: 'Số điện thoại', type: 'tel', required: true, value: v.phone, attrs: 'autocomplete="tel"' }) %>
+          <%- include('../partials/field', { name: 'email', label: 'Gmail', type: 'email', required: true, value: v.email, attrs: 'autocomplete="email"' }) %>
+          <%- include('../partials/field', { name: 'password', label: 'Mật khẩu', type: 'password', required: true, attrs: 'autocomplete="new-password"', hint: 'Tối thiểu 8 ký tự, có chữ và số' }) %>
+          <%- include('../partials/field', { name: 'password2', label: 'Nhập lại mật khẩu', type: 'password', required: true, attrs: 'autocomplete="new-password"' }) %>
+          <%- include('../partials/field', { name: 'member_code', label: 'Mã thành viên (tự đặt)', required: true, value: v.member_code, hint: 'Khách hàng dùng mã này khi được bạn giới thiệu. VD: minhhieu.dev' }) %>
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <legend>Vai trò đăng ký <span class="req">*</span></legend>
+        <div class="checks">
+          <% for (const r of L.FREELANCER_ROLES) { %>
+            <label class="check" title="<%= L.ROLES[r].desc %>"><input type="checkbox" name="roles" value="<%= r %>" <%- v.roles.includes(r) ? 'checked' : '' %>><%= L.ROLES[r].full %></label>
+          <% } %>
+        </div>
+        <% if (errors.roles) { %><p class="small" style="color:var(--c-danger-fg); margin-top: var(--sp-2)"><%= errors.roles %></p><% } %>
+      </fieldset>
+
+      <fieldset>
+        <legend>Năng lực</legend>
+        <div class="field">
+          <span class="label">Danh mục dịch vụ</span>
+          <div class="checks">
+            <% for (const s of L.SERVICE_TYPES) { %><label class="check"><input type="checkbox" name="service_types" value="<%= s %>" <%- [].concat(v.service_types || []).includes(s) ? 'checked' : '' %>><%= s %></label><% } %>
+          </div>
+        </div>
+        <%- include('../partials/field', { name: 'skills', label: 'Kỹ năng', value: v.skills, hint: 'Phân tách bằng dấu phẩy. VD: React, Figma, SEO' }) %>
+        <%- include('../partials/field', { name: 'experience', label: 'Kinh nghiệm', type: 'textarea', value: v.experience }) %>
+        <%- include('../partials/field', { name: 'portfolio', label: 'Sản phẩm đã từng làm', type: 'textarea', value: v.portfolio, hint: 'Mô tả ngắn, kèm đường link nếu có' }) %>
+      </fieldset>
+
+      <fieldset>
+        <legend>Hồ sơ &amp; xác minh</legend>
+        <div class="form-grid">
+          <div class="field">
+            <label for="f_cv">CV <span class="req">*</span></label>
+            <input class="input" id="f_cv" type="file" name="cv" accept=".pdf,.doc,.docx,image/*" required>
+            <% if (errors.cv) { %><span class="error"><%= errors.cv %></span><% } else { %><span class="hint">PDF, Word hoặc ảnh, tối đa 25MB</span><% } %>
+          </div>
+          <div class="field">
+            <label for="f_id_front">CCCD mặt trước <span class="req">*</span></label>
+            <input class="input" id="f_id_front" type="file" name="id_front" accept="image/png,image/jpeg,image/webp" required>
+            <% if (errors.id_front) { %><span class="error"><%= errors.id_front %></span><% } %>
+          </div>
+          <div class="field">
+            <label for="f_id_back">CCCD mặt sau <span class="req">*</span></label>
+            <input class="input" id="f_id_back" type="file" name="id_back" accept="image/png,image/jpeg,image/webp" required>
+          </div>
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <legend>Thông tin nhận thanh toán</legend>
+        <div class="form-grid">
+          <%- include('../partials/field', { name: 'bank_name', label: 'Ngân hàng', required: true, value: v.bank_name }) %>
+          <%- include('../partials/field', { name: 'bank_account', label: 'Số tài khoản', required: true, value: v.bank_account, attrs: 'inputmode="numeric"' }) %>
+          <%- include('../partials/field', { name: 'bank_holder', label: 'Chủ tài khoản', value: v.bank_holder, hint: 'Để trống nếu trùng họ tên' }) %>
+        </div>
+      </fieldset>
+
+      <button class="btn btn-primary" type="submit">Gửi hồ sơ cho M&amp;T</button>
+    </form>
+  </div>
+</main>
+<%- include('../partials/public-end') %>

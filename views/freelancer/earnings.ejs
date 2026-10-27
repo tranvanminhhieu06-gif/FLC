@@ -1,0 +1,38 @@
+<%- include('../partials/app-start') %>
+<div class="page-head"><div><h1>Thu nhập &amp; hoa hồng</h1><p class="muted">Có ba loại số liệu: <strong>dự kiến</strong> (ước tính), <strong>đủ điều kiện</strong> (M&amp;T đã đối soát và duyệt) và <strong>đã chi trả</strong>.</p></div></div>
+
+<div class="card flush" style="margin-bottom: var(--sp-6)">
+  <div class="card-head"><h2>Dự kiến từ Order đang tham gia</h2><span class="small muted">Giá trị HĐ × tỷ lệ vai trò × tỷ lệ phân công</span></div>
+  <% if (!estimates.length) { %><div class="empty"><p>Chưa có.</p></div><% } else { %>
+  <div class="table-wrap"><table class="table">
+    <thead><tr><th>Order</th><th>Vai trò</th><th>Trạng thái</th><th class="num">Tỷ lệ vai trò</th><th class="num">Phân công</th><th class="num">Dự kiến</th></tr></thead>
+    <tbody><% for (const e of estimates) { %>
+      <tr><td><a class="mono" href="/orders/<%= e.order_id %>"><%= e.code %></a> <%= e.title %></td><td><%= L.ROLES[e.role].label %><%= e.role === 'ACCOUNT' && e.needs_pm === 0 ? ' (kiêm PM)' : '' %></td>
+        <td><%- badge(L.ORDER_STATUS, e.status) %></td><td class="num"><%= fmt.pct(e.rate) %></td><td class="num"><%= fmt.pct(e.share_bp) %></td><td class="num"><%= fmt.vnd(e.estimate) %></td></tr>
+    <% } %></tbody>
+  </table></div><% } %>
+</div>
+
+<div class="card flush" style="margin-bottom: var(--sp-6)">
+  <div class="card-head"><h2>Sổ hoa hồng</h2></div>
+  <% if (!lines.length) { %><div class="empty"><p>Chưa có dòng hoa hồng. Hoa hồng chỉ phát sinh khi M&amp;T đối soát khoản thu thực tế.</p></div><% } else { %>
+  <div class="table-wrap"><table class="table">
+    <thead><tr><th>Order</th><th>Vai trò</th><th>Khoản thu</th><th class="num">Cơ sở tính</th><th class="num">Tỷ lệ</th><th class="num">Phân công</th><th class="num">Số tiền</th><th>Trạng thái</th></tr></thead>
+    <tbody><% for (const c of lines) { %>
+      <tr><td><a class="mono" href="/orders/<%= c.order_id %>"><%= c.code %></a></td><td><%= L.ROLES[c.role]?.label || c.role %><% if (c.reason) { %><div class="small muted"><%= c.reason %></div><% } %></td>
+        <td class="small"><%= L.PAYMENT_KIND[c.payment_kind] %> · <%= fmt.date(c.confirmed_at) %></td>
+        <td class="num"><%= fmt.vnd(c.base_amount) %></td><td class="num"><%= fmt.pct(c.rate_bp) %></td><td class="num"><%= fmt.pct(c.share_bp) %></td>
+        <td class="num"><strong><%= fmt.vnd(c.amount) %></strong></td><td><%- badge(L.COMMISSION_STATUS, c.status) %></td></tr>
+    <% } %></tbody>
+  </table></div><% } %>
+</div>
+
+<div class="card flush">
+  <div class="card-head"><h2>Lịch sử chi trả</h2></div>
+  <% if (!payouts.length) { %><div class="empty"><p>Chưa có lần chi trả nào.</p></div><% } else { %>
+  <div class="table-wrap"><table class="table">
+    <thead><tr><th>Ngày</th><th>Mã giao dịch</th><th class="num">Số tiền</th></tr></thead>
+    <tbody><% for (const p of payouts) { %><tr><td><%= fmt.dateTime(p.paid_at) %></td><td class="mono"><%= p.ref %></td><td class="num"><strong><%= fmt.vnd(p.amount) %></strong></td></tr><% } %></tbody>
+  </table></div><% } %>
+</div>
+<%- include('../partials/app-end') %>

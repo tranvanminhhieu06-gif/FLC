@@ -1,0 +1,28 @@
+<%- include('../partials/public-start') %>
+<main class="auth-wrap" id="main">
+  <div class="card auth-card">
+    <span class="eyebrow">Bước 1 · Khách hàng</span>
+    <h1>Tạo tài khoản khách hàng</h1>
+    <p class="muted">Nhập Gmail <em>hoặc</em> số điện thoại. Hệ thống sẽ cấp mã khách hàng (CUS…).</p>
+    <form method="post" action="/register/customer" novalidate>
+      <input type="hidden" name="_csrf" value="<%= csrf() %>">
+      <%- include('../partials/field', { name: 'full_name', label: 'Họ tên / người liên hệ', value: v.full_name, attrs: 'autocomplete="name"' }) %>
+      <%- include('../partials/field', { name: 'email', label: 'Gmail', type: 'email', value: v.email, attrs: 'autocomplete="email"' }) %>
+      <%- include('../partials/field', { name: 'phone', label: 'Số điện thoại', type: 'tel', value: v.phone, attrs: 'autocomplete="tel" inputmode="tel"', hint: 'Cần ít nhất Gmail hoặc số điện thoại' }) %>
+      <div class="form-grid">
+        <%- include('../partials/field', { name: 'password', label: 'Mật khẩu', type: 'password', required: true, attrs: 'autocomplete="new-password"', hint: 'Tối thiểu 8 ký tự, có chữ và số' }) %>
+        <%- include('../partials/field', { name: 'password2', label: 'Nhập lại mật khẩu', type: 'password', required: true, attrs: 'autocomplete="new-password"' }) %>
+      </div>
+      <details class="disclose" <%- v.company || v.referrer_code ? 'open' : '' %> style="margin-bottom: var(--sp-4)">
+        <summary>Thông tin doanh nghiệp &amp; mã giới thiệu (không bắt buộc)</summary>
+        <%- include('../partials/field', { name: 'company', label: 'Tên doanh nghiệp', value: v.company }) %>
+        <%- include('../partials/field', { name: 'tax_code', label: 'Mã số thuế', value: v.tax_code }) %>
+        <%- include('../partials/field', { name: 'address', label: 'Địa chỉ', value: v.address }) %>
+        <%- include('../partials/field', { name: 'referrer_code', label: 'Mã người giới thiệu', value: v.referrer_code, hint: 'Mã thành viên của Referrer đã giới thiệu bạn' }) %>
+      </details>
+      <button class="btn btn-primary btn-block" type="submit">Tạo tài khoản</button>
+    </form>
+    <p class="small muted" style="margin-top: var(--sp-4)">Đã có tài khoản? <a href="/login">Đăng nhập</a></p>
+  </div>
+</main>
+<%- include('../partials/public-end') %>

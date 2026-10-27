@@ -1,0 +1,41 @@
+<%- include('../partials/app-start') %>
+<div class="page-head">
+  <div><h1>Xin chào, <%= user.full_name %></h1><p class="muted">Mã tài khoản <span class="mono"><%= user.code %></span></p></div>
+  <% if (invitations) { %><a class="btn btn-accent" href="/fl/invitations"><%- icon('inbox') %><%= invitations %> lời mời đang chờ</a><% } %>
+</div>
+
+<div class="grid grid-4" style="margin-bottom: var(--sp-6)">
+  <div class="stat"><div class="stat-label">Dự kiến (đang làm)</div><div class="stat-value" style="font-size:var(--fs-xl)"><%= fmt.vnd(estimate) %></div><div class="stat-sub">Ước tính, chưa phải khoản được trả</div></div>
+  <div class="stat"><div class="stat-label">Chờ M&amp;T duyệt</div><div class="stat-value" style="font-size:var(--fs-xl)"><%= fmt.vnd(earn.pending) %></div></div>
+  <div class="stat"><div class="stat-label">Đã duyệt · chờ chi</div><div class="stat-value" style="font-size:var(--fs-xl); color:var(--c-brand-700)"><%= fmt.vnd(earn.approved) %></div></div>
+  <div class="stat"><div class="stat-label">Đã nhận</div><div class="stat-value" style="font-size:var(--fs-xl)"><%= fmt.vnd(earn.paid) %></div></div>
+</div>
+
+<div class="split">
+  <div class="card flush">
+    <div class="card-head"><h2>Order đang tham gia</h2></div>
+    <% if (!myOrders.length) { %>
+      <div class="empty"><%- icon('briefcase') %><p>Chưa có Order nào. <% if (user.roles.includes('SALES') || user.roles.includes('ACCOUNT')) { %><a href="/fl/opportunities">Xem cơ hội</a><% } %></p></div>
+    <% } else { %>
+      <div class="table-wrap"><table class="table">
+        <thead><tr><th>Mã</th><th>Order</th><th>Vai trò</th><th>Trạng thái</th><th>Hạn</th></tr></thead>
+        <tbody><% for (const o of myOrders) { %>
+          <tr><td class="mono"><a href="/orders/<%= o.id %>"><%= o.code %></a></td><td><%= o.title %></td>
+            <td><% for (const r of o.roles.split(', ')) { %><span class="tag"><%= L.ROLES[r].label %></span> <% } %></td>
+            <td><%- badge(L.ORDER_STATUS, o.status) %></td><td class="muted nowrap"><%= fmt.date(o.deadline) %></td></tr>
+        <% } %></tbody>
+      </table></div>
+    <% } %>
+  </div>
+  <div class="card">
+    <h2>Nhiệm vụ của tôi</h2>
+    <% if (!tasks.length) { %><p class="muted small">Không có nhiệm vụ đang mở.</p><% } %>
+    <ul class="timeline">
+      <% for (const t of tasks) { %>
+        <li><a href="/orders/<%= t.order_id %>#tasks"><strong><%= t.title %></strong></a> <%- badge(L.TASK_STATUS, t.status) %>
+          <time><span class="mono"><%= t.code %></span> · hạn <%= fmt.date(t.due_date) %></time></li>
+      <% } %>
+    </ul>
+  </div>
+</div>
+<%- include('../partials/app-end') %>

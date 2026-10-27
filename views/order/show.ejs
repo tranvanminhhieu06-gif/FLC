@@ -1,0 +1,548 @@
+<%- include('../partials/app-start') %>
+<%
+  const C = `<input type="hidden" name="_csrf" value="${csrf()}">`;
+  const S = order.status;
+  const st = L.ORDER_STATUS[S];
+  const currentQuote = quotes.find((q) => q.status === 'SENT');
+  const locked = assignments.filter((a) => a.status === 'LOCKED');
+  const live = assignments.filter((a) => ['ACCEPTED', 'LOCKED'].includes(a.status));
+  const RATE_KEYS = ['REFERRER', 'SALES', 'ACCOUNT', 'PM', 'PROJECT', 'MT'];
+  const ratesSrc = allocations || policy.rates;
+  const pctInput = (bp) => (bp / 100).toString();
+  const base = `/orders/${order.id}`;
+  const fileUrl = (kind, id) => `/files/${kind}/${id}`;
+
+  // "Việc cần làm" theo người xem
+  const todo = [];
+  if (can.editDraft) todo.push('Hoàn thiện và gửi Order để Sales tiếp nhận.');
+  if (acc.canClaim) todo.push(`Order đang cần ${L.ROLES[acc.canClaim].label}. Bấm "Nhận" để phụ trách.`);
+  if (can.quote && S === 'CONSULTING') todo.push('Tư vấn khách hàng và gửi báo giá.');
+  if (can.respondQuote) todo.push('Xem báo giá, đồng ý điều khoản để ký hợp đồng.');
+  if (can.payDeposit) todo.push(`Chuyển khoản đặt cọc ${fmt.vnd(fin.depositRequired)} và báo cho M&T.`);
+  if (can.startMatching) todo.push('Đã đủ cọc. Bắt đầu ghép nhân sự.');
+  if (can.matching) todo.push('Mời PM/Project, kiểm tra tỷ lệ phân công rồi gửi phương án cho M&T duyệt.');
+  if (can.admin && S === 'PENDING_MATCH_APPROVAL') todo.push('Duyệt phương án ghép: khóa nhân sự và tỷ lệ.');
+  if (can.deliver) todo.push('Cập nhật nhiệm vụ, nộp demo/preview và file gốc.');
+  if (can.reviewer && deliverables.some((d) => d.review_status === 'PENDING')) todo.push('Có sản phẩm chờ bạn kiểm duyệt.');
+  if (can.decide) todo.push('Xem bản demo/preview và phản hồi nghiệm thu.');
+  if (can.owner && S === 'AWAITING_PAYMENT') todo.push(`Thanh toán phần còn lại ${fmt.vnd(fin.outstanding)} để mở quyền tải file gốc.`);
+  if (can.signOff) todo.push('Tải file gốc và ký biên bản nghiệm thu.');
+  if (can.admin && S === 'RECONCILIATION') todo.push('Đối soát doanh thu, duyệt hoa hồng rồi xác nhận hoàn tất.');
+  if (acc.invited.length) todo.push('Bạn có lời mời cho Order này. Phản hồi ở mục Lời mời.');
+%>
+
+<div class="page-head">
+  <div>
+    <div class="row small muted"><span class="mono"><%= order.code %></span><% if (project) { %>· Nhóm <span class="mono"><%= project.code %></span><% } %>· <%= order.service_type %></div>
+    <h1><%= order.title %></h1>
+    <div class="row"><%- badge(L.ORDER_STATUS, S) %><% for (const r of acc.roles) { %><span class="tag">Bạn: <%= L.ROLES[r].label %></span><% } %></div>
+  </div>
+  <div class="row">
+    <% if (can.editDraft) { %>
+      <a class="btn btn-secondary" href="/customer/orders/<%= order.id %>/edit">Sửa bản nháp</a>
+      <form method="post" action="<%= base %>/submit"><%- C %><button class="btn btn-primary" <%- user.status !== 'ACTIVE' ? 'disabled' : '' %>>Gửi Order</button></form>
+    <% } %>
+    <% if (acc.canClaim) { %><form method="post" action="<%= base %>/claim"><%- C %><button class="btn btn-accent">Nhận <%= L.ROLES[acc.canClaim].label %></button></form><% } %>
+    <% if (can.admin) { %><a class="btn btn-ghost" href="/admin/audit?entity=order"><%- icon('history') %>Nhật ký</a><% } %>
+  </div>
+</div>
+
+<ol class="stepper" aria-label="Tiến trình Order">
+  <% for (const s of L.STEPS) { const cls = S === 'CANCELLED' ? '' : s.n < st.step || S === 'CLOSED' ? 'done' : s.n === st.step ? 'current' : ''; %>
+    <li class="<%= cls %>" <%- cls === 'current' ? 'aria-current="step"' : '' %>><b><%= s.n %>. <%= s.name %></b><%= s.sub %></li>
+  <% } %>
+</ol>
+
+<% if (S === 'CANCELLED') { %><div class="alert danger" role="status"><%- icon('x') %><div>Order đã hủy. <%= history[0]?.note || '' %></div></div><% } %>
+<% if (todo.length) { %>
+  <div class="alert warn" role="status"><%- icon('target') %><div><strong>Việc cần làm:</strong><ul style="margin:4px 0 0; padding-left: 18px"><% for (const t of todo) { %><li><%= t %></li><% } %></ul></div></div>
+<% } %>
+
+<div class="split">
+<div class="stack" style="min-width:0">
+
+  <!-- Yêu cầu -->
+  <section class="card" id="request">
+    <div class="card-head"><h2>Yêu cầu</h2><span class="small muted">Gửi lúc <%= fmt.dateTime(order.submitted_at) %></span></div>
+    <dl class="kv">
+      <dt>Mô tả</dt><dd style="white-space:pre-line"><%= order.description || '—' %></dd>
+      <dt>Mục tiêu</dt><dd style="white-space:pre-line"><%= order.goals || '—' %></dd>
+      <dt>Bàn giao</dt><dd style="white-space:pre-line"><%= order.deliverables || '—' %></dd>
+      <dt>Ngân sách</dt><dd><%= fmt.vnd(order.budget) %></dd>
+      <dt>Thời hạn</dt><dd><%= fmt.date(order.deadline) %></dd>
+      <% if (acc.seeContact) { %><dt>Liên hệ dự án</dt><dd style="white-space:pre-line"><%= order.contact_info || '—' %></dd><% } %>
+      <% if (acc.seeInvoice) { %><dt><%- icon('lock') %> Hóa đơn</dt><dd style="white-space:pre-line"><%= order.invoice_info || '—' %> <span class="small muted">(chỉ Admin &amp; khách thấy)</span></dd><% } %>
+    </dl>
+    <% if (attachments.length) { %>
+      <h3 style="margin-top: var(--sp-4)">Tài liệu tham khảo</h3>
+      <div class="row"><% for (const a of attachments) { %><a class="tag" href="<%= fileUrl('attachment', a.id) %>"><%- icon('file') %> <%= a.file_name %></a><% } %></div>
+    <% } %>
+    <% if ((can.owner || can.admin) && !['CLOSED','CANCELLED'].includes(S)) { %>
+      <form method="post" action="<%= base %>/attachments?_csrf=<%= csrf() %>" enctype="multipart/form-data" class="row" style="margin-top: var(--sp-3)">
+        <input class="input" type="file" name="refs" multiple aria-label="Thêm tài liệu" style="flex:1">
+        <button class="btn btn-secondary btn-sm"><%- icon('upload') %>Tải lên</button>
+      </form>
+    <% } %>
+  </section>
+
+  <!-- Báo giá & hợp đồng -->
+  <% if (quotes.length || can.quote) { %>
+  <section class="card" id="quotes">
+    <div class="card-head"><h2>Báo giá &amp; hợp đồng</h2><% if (fin.contract) { %><span class="badge success">Đã ký <%= fmt.date(fin.contract.signed_at) %></span><% } %></div>
+    <% if (fin.contract && can.seeMoney) { %>
+      <div class="grid grid-3" style="margin-bottom: var(--sp-4)">
+        <div class="stat"><div class="stat-label">Giá trị hợp đồng</div><div class="stat-value" style="font-size:var(--fs-xl)"><%= fmt.vnd(fin.value) %></div></div>
+        <div class="stat"><div class="stat-label">Đặt cọc (<%= fin.contract.deposit_pct %>%)</div><div class="stat-value" style="font-size:var(--fs-xl)"><%= fmt.vnd(fin.depositRequired) %></div></div>
+        <div class="stat"><div class="stat-label">Còn phải thu</div><div class="stat-value" style="font-size:var(--fs-xl); color:var(--c-accent-700)"><%= fmt.vnd(fin.outstanding) %></div></div>
+      </div>
+    <% } %>
+    <% for (const q of quotes) { %>
+      <details class="disclose" <%- q.status === 'SENT' || q.status === 'ACCEPTED' ? 'open' : '' %> style="margin-bottom: var(--sp-3)">
+        <summary>Phiên bản <%= q.version %> · <%= can.seeMoney ? fmt.vnd(q.amount) : '' %> · <%- badge({ SENT: { label: 'Chờ khách xác nhận', tone: 'warn' }, ACCEPTED: { label: 'Đã chấp nhận', tone: 'success' }, REJECTED: { label: 'Bị từ chối', tone: 'danger' }, SUPERSEDED: { label: 'Đã thay thế', tone: 'neutral' } }, q.status) %></summary>
+        <dl class="kv">
+          <dt>Phạm vi</dt><dd style="white-space:pre-line"><%= q.scope %></dd>
+          <dt>Tiến độ</dt><dd style="white-space:pre-line"><%= q.timeline || '—' %></dd>
+          <% if (can.seeMoney) { %><dt>Giá trị</dt><dd><%= fmt.vnd(q.amount) %> · cọc <%= q.deposit_pct %>% = <%= fmt.vnd(Math.round(q.amount * q.deposit_pct / 100)) %></dd><% } %>
+          <dt>Điều khoản</dt><dd style="white-space:pre-line"><%= q.terms || 'Theo điều khoản chuẩn của FLC' %></dd>
+          <% if (q.customer_note) { %><dt>Phản hồi khách</dt><dd><%= q.customer_note %></dd><% } %>
+          <dt>Ngày gửi</dt><dd><%= fmt.dateTime(q.created_at) %></dd>
+        </dl>
+        <% if (can.respondQuote && q.status === 'SENT') { %>
+          <div class="grid grid-2" style="margin-top: var(--sp-4)">
+            <form method="post" action="<%= base %>/quotes/<%= q.id %>/accept" class="card" style="background:var(--c-brand-50)">
+              <%- C %>
+              <label class="check" style="border:0; background:transparent; padding:0"><input type="checkbox" name="agree" value="1" required> Tôi đồng ý với báo giá và điều khoản hợp đồng</label>
+              <button class="btn btn-primary btn-block" style="margin-top: var(--sp-3)">Xác nhận &amp; ký hợp đồng</button>
+            </form>
+            <form method="post" action="<%= base %>/quotes/<%= q.id %>/reject" class="card">
+              <%- C %>
+              <%- include('../partials/field', { name: 'note', label: 'Lý do / đề xuất điều chỉnh', type: 'textarea', attrs: 'rows="2"' }) %>
+              <button class="btn btn-secondary btn-block">Từ chối báo giá</button>
+            </form>
+          </div>
+        <% } %>
+      </details>
+    <% } %>
+    <% if (can.quote) { %>
+      <details class="disclose" <%- !quotes.length ? 'open' : '' %>>
+        <summary><%- icon('plus') %> <%= quotes.length ? 'Gửi báo giá phiên bản mới' : 'Lập báo giá' %></summary>
+        <form method="post" action="<%= base %>/quotes">
+          <%- C %>
+          <div class="form-grid">
+            <%- include('../partials/field', { name: 'amount', label: 'Giá trị hợp đồng (VND)', required: true, attrs: 'inputmode="numeric" data-money', value: currentQuote ? fmt.num(currentQuote.amount) : (order.budget ? fmt.num(order.budget) : '') }) %>
+            <%- include('../partials/field', { name: 'deposit_pct', label: 'Tỷ lệ đặt cọc (%)', type: 'number', value: currentQuote ? currentQuote.deposit_pct : 50, attrs: 'min="0" max="100"' }) %>
+          </div>
+          <%- include('../partials/field', { name: 'scope', label: 'Phạm vi công việc', type: 'textarea', required: true, value: currentQuote?.scope }) %>
+          <%- include('../partials/field', { name: 'timeline', label: 'Tiến độ & mốc bàn giao', type: 'textarea', value: currentQuote?.timeline, attrs: 'rows="3"' }) %>
+          <%- include('../partials/field', { name: 'terms', label: 'Điều khoản hợp đồng', type: 'textarea', value: currentQuote?.terms, attrs: 'rows="3"', hint: 'Số lần chỉnh sửa, bảo hành, quyền sở hữu file gốc…' }) %>
+          <button class="btn btn-primary">Gửi báo giá cho khách</button>
+        </form>
+      </details>
+    <% } %>
+  </section>
+  <% } %>
+
+  <!-- Thanh toán -->
+  <% if (fin.contract && can.seeMoney) { %>
+  <section class="card" id="payments">
+    <div class="card-head"><h2>Thanh toán</h2>
+      <span class="small muted">Đã thu <strong><%= fmt.vnd(fin.collected) %></strong> / <%= fmt.vnd(fin.value) %></span></div>
+    <div class="bar" aria-hidden="true" style="margin-bottom: var(--sp-4)"><span style="width: <%= Math.min(100, Math.round(fin.collected / Math.max(1, fin.value) * 100)) %>%"></span></div>
+    <% if (payments.length) { %>
+      <div class="table-wrap"><table class="table">
+        <thead><tr><th>Loại</th><th class="num">Số tiền</th><% if (can.admin) { %><th class="num">Thuế</th><th class="num">Giảm trừ</th><% } %><th>Mã GD</th><th>Trạng thái</th><th>Ngày</th></tr></thead>
+        <tbody><% for (const p of payments) { %>
+          <tr><td><%= L.PAYMENT_KIND[p.kind] %></td><td class="num"><%= fmt.vnd(p.amount) %></td>
+            <% if (can.admin) { %><td class="num"><%= fmt.num(p.tax) %></td><td class="num"><%= fmt.num(p.deductions) %></td><% } %>
+            <td class="mono small"><%= p.ref || '—' %></td>
+            <td><%- p.rejected ? '<span class="badge danger">Từ chối</span>' : p.confirmed_at ? (p.reconciled ? '<span class="badge success">Đã đối soát</span>' : '<span class="badge brand">Đã xác nhận</span>') : '<span class="badge warn">Chờ M&amp;T xác nhận</span>' %></td>
+            <td class="muted nowrap"><%= fmt.date(p.created_at) %></td></tr>
+        <% } %></tbody>
+      </table></div>
+    <% } %>
+    <% if (can.payDeposit || can.payInstallment) { %>
+      <form method="post" action="<%= base %>/payments" class="card" style="margin-top: var(--sp-4); background: var(--c-n-50)">
+        <%- C %>
+        <h3>Báo đã chuyển khoản</h3>
+        <p class="small muted">Chuyển khoản tới tài khoản M&amp;T Group với nội dung <strong class="mono"><%= order.code %></strong>. M&amp;T sẽ đối chiếu sao kê rồi xác nhận.</p>
+        <div class="form-grid">
+          <div class="field"><label for="f_kind">Khoản</label>
+            <select class="select" id="f_kind" name="kind">
+              <% if (can.payDeposit) { %><option value="deposit">Đặt cọc</option><% } %>
+              <% if (can.payInstallment) { %><option value="installment">Thanh toán đợt</option><% } %>
+            </select></div>
+          <%- include('../partials/field', { name: 'amount', label: 'Số tiền (VND)', required: true, attrs: 'inputmode="numeric" data-money', value: fmt.num(can.payDeposit ? Math.max(0, fin.depositRequired - fin.depositPaid) : fin.outstanding) }) %>
+          <%- include('../partials/field', { name: 'ref', label: 'Mã giao dịch ngân hàng', required: true }) %>
+          <%- include('../partials/field', { name: 'method', label: 'Hình thức', value: 'Chuyển khoản' }) %>
+        </div>
+        <button class="btn btn-primary">Gửi xác nhận</button>
+      </form>
+    <% } %>
+    <% if (can.admin && !['CLOSED','CANCELLED'].includes(S)) { %>
+      <div class="grid grid-2" style="margin-top: var(--sp-4)">
+        <details class="disclose"><summary>M&amp;T ghi nhận khoản thu trực tiếp</summary>
+          <form method="post" action="/admin/orders/<%= order.id %>/record-payment"><%- C %>
+            <div class="field"><label for="f_rk">Khoản</label><select class="select" id="f_rk" name="kind"><option value="deposit">Đặt cọc</option><option value="installment">Thanh toán đợt</option></select></div>
+            <%- include('../partials/field', { name: 'amount', label: 'Số tiền', required: true, attrs: 'inputmode="numeric" data-money' }) %>
+            <div class="form-grid">
+              <%- include('../partials/field', { name: 'tax', label: 'Thuế gián thu', attrs: 'inputmode="numeric" data-money' }) %>
+              <%- include('../partials/field', { name: 'deductions', label: 'Giảm trừ', attrs: 'inputmode="numeric" data-money' }) %>
+            </div>
+            <%- include('../partials/field', { name: 'ref', label: 'Mã giao dịch', required: true }) %>
+            <button class="btn btn-primary btn-sm">Ghi nhận &amp; xác nhận</button>
+          </form></details>
+        <details class="disclose"><summary>Hoàn tiền / ngoại lệ cọc</summary>
+          <% if (S === 'AWAITING_DEPOSIT') { %>
+            <form method="post" action="/admin/orders/<%= order.id %>/deposit-exception" style="margin-bottom: var(--sp-4)"><%- C %>
+              <%- include('../partials/field', { name: 'reason', label: 'Lý do phê duyệt ngoại lệ đặt cọc', required: true }) %>
+              <button class="btn btn-accent btn-sm" data-confirm="Cho phép triển khai khi chưa đủ cọc?">Phê duyệt ngoại lệ</button>
+            </form>
+          <% } %>
+          <% if (fin.collected > 0) { %>
+          <form method="post" action="/admin/orders/<%= order.id %>/refund"><%- C %>
+            <%- include('../partials/field', { name: 'amount', label: 'Số tiền hoàn', required: true, attrs: 'inputmode="numeric" data-money' }) %>
+            <%- include('../partials/field', { name: 'reason', label: 'Lý do', required: true }) %>
+            <button class="btn btn-danger btn-sm" data-confirm="Ghi nhận hoàn tiền? Nếu đã đối soát, đợt đối soát sau sẽ tạo dòng hoa hồng âm tương ứng.">Ghi nhận hoàn tiền</button>
+          </form><% } %>
+        </details>
+      </div>
+    <% } %>
+  </section>
+  <% } %>
+
+  <!-- Nhân sự & phân công -->
+  <% if (assignments.length || can.matching || can.startMatching || (can.admin && st.step >= 4)) { %>
+  <section class="card" id="team">
+    <div class="card-head"><h2>Nhân sự &amp; phân công</h2>
+      <% if (allocations) { %><span class="badge success"><%- icon('lock') %> Đã khóa</span><% } %></div>
+    <% if (order.needs_pm != null) { %><p class="small muted"><%= order.needs_pm ? 'Order có PM (5.2): PM kiểm duyệt chất lượng.' : 'Order không cần PM (5.1): Account kiểm duyệt và nhận luôn phần doanh thu PM.' %></p><% } %>
+    <div class="table-wrap"><table class="table">
+      <thead><tr><th>Vai trò</th><th>Người đảm nhận</th><th class="num">Phân công</th><% if (allocations || can.coordinator) { %><th class="num">Tỷ lệ vai trò</th><% } %><th>Trạng thái</th><th></th></tr></thead>
+      <tbody>
+        <% if (!assignments.length) { %><tr><td colspan="6" class="muted">Chưa có ai.</td></tr><% } %>
+        <% for (const a of assignments) { %>
+          <tr>
+            <td><strong><%= L.ROLES[a.role].label %></strong></td>
+            <td><span class="mono small"><%= a.code %></span> <%= a.full_name %><% if (a.note) { %><div class="small muted"><%= a.note %></div><% } %></td>
+            <td class="num">
+              <% if (can.matching && a.role === 'PROJECT' && ['INVITED','ACCEPTED'].includes(a.status)) { %>
+                <form method="post" action="<%= base %>/assignments/<%= a.id %>/share" class="row" style="justify-content:flex-end; gap:4px"><%- C %>
+                  <input class="input" name="share_pct" type="number" min="1" max="100" step="0.01" value="<%= a.share_bp / 100 %>" aria-label="Tỷ lệ phân công %" style="width:84px; min-height:36px">
+                  <button class="btn btn-ghost btn-sm">Lưu</button></form>
+              <% } else { %><%= fmt.pct(a.share_bp) %><% } %>
+            </td>
+            <% if (allocations || can.coordinator) { %><td class="num"><%= fmt.pct(ratesSrc[a.role]) %></td><% } %>
+            <td><%- badge(L.ASSIGNMENT_STATUS, a.status) %></td>
+            <td><% if (can.admin && ['INVITED','ACCEPTED','LOCKED'].includes(a.status)) { %>
+              <details><summary class="small" style="cursor:pointer">Thu hồi</summary>
+                <form method="post" action="/admin/orders/<%= order.id %>/assignments/<%= a.id %>/revoke" style="margin-top:6px"><%- C %>
+                  <input class="input" name="reason" placeholder="Lý do" aria-label="Lý do thu hồi" required style="min-height:36px">
+                  <button class="btn btn-danger btn-sm" style="margin-top:4px">Thu hồi</button></form></details>
+            <% } %></td>
+          </tr>
+        <% } %>
+      </tbody>
+    </table></div>
+
+    <% if (can.startMatching) { %>
+      <form method="post" action="<%= base %>/matching/start" style="margin-top: var(--sp-4)"><%- C %><button class="btn btn-primary">Bắt đầu ghép nhân sự</button></form>
+    <% } %>
+
+    <% if (can.matching) { %>
+      <div class="stack" style="margin-top: var(--sp-5)">
+        <form method="post" action="<%= base %>/matching/needs-pm" class="card" style="background:var(--c-n-50)"><%- C %>
+          <strong>Bước 5 · Đánh giá độ phức tạp</strong>
+          <div class="checks" style="margin-top: var(--sp-2)">
+            <label class="check"><input type="radio" name="needs_pm" value="0" <%- order.needs_pm === 0 ? 'checked' : '' %>> 5.1 Không cần PM (Account kiêm PM)</label>
+            <label class="check"><input type="radio" name="needs_pm" value="1" <%- order.needs_pm === 1 ? 'checked' : '' %>> 5.2 Cần PM</label>
+          </div>
+          <button class="btn btn-secondary btn-sm" style="margin-top: var(--sp-3)">Xác nhận</button>
+        </form>
+        <% for (const role of order.needs_pm ? ['PM', 'PROJECT'] : ['PROJECT']) { if (role === 'PM' && live.some((a) => a.role === 'PM')) continue; %>
+          <div>
+            <h3>Gợi ý <%= L.ROLES[role].label %> <span class="small muted">(theo kỹ năng, mức sẵn sàng và khối lượng việc)</span></h3>
+            <% if (!suggestions[role].length) { %><p class="small muted">Không còn freelancer phù hợp.</p><% } else { %>
+            <div class="table-wrap"><table class="table">
+              <thead><tr><th>Freelancer</th><th>Kỹ năng</th><th>Sẵn sàng</th><th class="num">Đang làm</th><th></th></tr></thead>
+              <tbody><% for (const s of suggestions[role]) { %>
+                <tr><td><span class="mono small"><%= s.code %></span> <%= s.full_name %></td><td class="small muted"><%= s.skills || '—' %></td>
+                  <td><%- badge({ AVAILABLE: { label: 'Sẵn sàng', tone: 'success' }, BUSY: { label: 'Bận', tone: 'warn' }, AWAY: { label: 'Tạm nghỉ', tone: 'neutral' } }, s.availability) %></td>
+                  <td class="num"><%= s.load %></td>
+                  <td><form method="post" action="<%= base %>/matching/invite" class="row" style="gap:4px; justify-content:flex-end"><%- C %>
+                    <input type="hidden" name="user_id" value="<%= s.id %>"><input type="hidden" name="role" value="<%= role %>">
+                    <% if (role === 'PROJECT') { %><input class="input" type="number" name="share_pct" min="1" max="100" step="0.01" value="100" aria-label="Tỷ lệ phân công %" style="width:76px; min-height:36px"><% } %>
+                    <button class="btn btn-primary btn-sm">Mời</button></form></td></tr>
+              <% } %></tbody>
+            </table></div><% } %>
+          </div>
+        <% } %>
+      </div>
+    <% } %>
+
+    <% if (planProblems.length) { %>
+      <div class="alert info" style="margin-top: var(--sp-4)"><%- icon('list') %><div><strong>Kiểm tra phương án:</strong><ul style="margin:4px 0 0; padding-left:18px"><% for (const p of planProblems) { %><li><%= p %></li><% } %></ul></div></div>
+    <% } %>
+    <% if (can.matching) { %>
+      <form method="post" action="<%= base %>/matching/submit"><%- C %><button class="btn btn-accent">Gửi phương án cho M&amp;T duyệt</button></form>
+    <% } %>
+
+    <% if (can.admin && S === 'PENDING_MATCH_APPROVAL') { %>
+      <div class="grid grid-2" style="margin-top: var(--sp-5)">
+        <form method="post" action="/admin/orders/<%= order.id %>/approve-plan" class="card" style="background:var(--c-brand-50)"><%- C %>
+          <h3>Duyệt &amp; khóa phương án</h3>
+          <p class="small muted">Tỷ lệ dưới đây sẽ được chụp vào Order. Thay đổi chính sách sau này không ảnh hưởng Order này.</p>
+          <div class="form-grid" style="grid-template-columns: repeat(3, 1fr)">
+            <% for (const k of RATE_KEYS) { %><div class="field"><label for="ar_<%= k %>"><%= L.ROLES[k].label %> %</label><input class="input" id="ar_<%= k %>" name="rate_<%= k %>" type="number" step="0.01" min="0" max="100" value="<%= pctInput(policy.rates[k]) %>"></div><% } %>
+          </div>
+          <button class="btn btn-primary" data-confirm="Khóa danh sách nhân sự và tỷ lệ, tạo nhóm làm việc?">Duyệt &amp; khóa</button>
+        </form>
+        <form method="post" action="/admin/orders/<%= order.id %>/return-plan" class="card"><%- C %>
+          <h3>Trả lại phương án</h3>
+          <%- include('../partials/field', { name: 'note', label: 'Nội dung cần điều chỉnh', type: 'textarea', required: true }) %>
+          <button class="btn btn-secondary">Trả về Account</button>
+        </form>
+      </div>
+    <% } %>
+
+    <% if (can.admin && !['CLOSED','CANCELLED','DRAFT','PENDING_INTAKE'].includes(S)) { %>
+      <details class="disclose" style="margin-top: var(--sp-4)"><summary>M&amp;T phân công / thay người trực tiếp</summary>
+        <form method="post" action="/admin/orders/<%= order.id %>/assign"><%- C %>
+          <div class="form-grid">
+            <div class="field"><label for="f_as_role">Vai trò</label><select class="select" id="f_as_role" name="role"><% for (const r of L.FREELANCER_ROLES) { %><option value="<%= r %>"><%= L.ROLES[r].label %></option><% } %></select></div>
+            <div class="field"><label for="f_as_user">Freelancer</label><select class="select" id="f_as_user" name="user_id"><% for (const f of freelancers) { %><option value="<%= f.id %>"><%= f.code %> · <%= f.full_name %> (<%= f.roles %>)</option><% } %></select></div>
+            <%- include('../partials/field', { name: 'share_pct', label: 'Phân công %', type: 'number', value: 100, attrs: 'min="1" max="100" step="0.01"' }) %>
+          </div>
+          <%- include('../partials/field', { name: 'reason', label: 'Lý do', required: true }) %>
+          <button class="btn btn-secondary btn-sm">Phân công</button>
+        </form></details>
+    <% } %>
+  </section>
+  <% } %>
+
+  <!-- Nhiệm vụ -->
+  <% if (project && acc.workspace && !acc.isCustomer) { %>
+  <section class="card" id="tasks">
+    <div class="card-head"><h2>Nhiệm vụ</h2><span class="small muted">Nhóm <span class="mono"><%= project.code %></span></span></div>
+    <div class="table-wrap"><table class="table">
+      <thead><tr><th>Nhiệm vụ</th><th>Người thực hiện</th><th>Hạn</th><th>Trạng thái</th><th></th></tr></thead>
+      <tbody>
+        <% if (!tasks.length) { %><tr><td colspan="5" class="muted">Chưa có nhiệm vụ.</td></tr><% } %>
+        <% for (const t of tasks) { %>
+          <tr><td><strong><%= t.title %></strong><% if (t.description) { %><div class="small muted"><%= t.description %></div><% } %></td>
+            <td><%= t.assignee_code ? `${t.assignee_code} · ${t.assignee_name}` : '—' %></td><td class="nowrap"><%= fmt.date(t.due_date) %></td>
+            <td><%- badge(L.TASK_STATUS, t.status) %></td>
+            <td><% if ((t.assignee_id === user.id || can.reviewer) && t.status !== 'DONE' && !['CLOSED','CANCELLED'].includes(S)) { %>
+              <form method="post" action="<%= base %>/tasks/<%= t.id %>/status" class="row" style="gap:4px"><%- C %>
+                <select class="select" name="status" aria-label="Trạng thái" style="min-height:36px; width:auto">
+                  <option value="TODO" <%- t.status === 'TODO' ? 'selected' : '' %>>Cần làm</option>
+                  <option value="DOING" <%- t.status === 'DOING' ? 'selected' : '' %>>Đang làm</option>
+                  <% if (can.reviewer) { %><option value="DONE">Hoàn thành</option><% } %>
+                </select><button class="btn btn-ghost btn-sm">Lưu</button></form><% } %></td></tr>
+        <% } %>
+      </tbody>
+    </table></div>
+    <% if (can.tasks) { %>
+      <details class="disclose" style="margin-top: var(--sp-4)"><summary><%- icon('plus') %> Giao nhiệm vụ</summary>
+        <form method="post" action="<%= base %>/tasks"><%- C %>
+          <%- include('../partials/field', { name: 'title', label: 'Tên nhiệm vụ', required: true }) %>
+          <%- include('../partials/field', { name: 'description', label: 'Yêu cầu & tiêu chuẩn chất lượng', type: 'textarea', attrs: 'rows="2"' }) %>
+          <div class="form-grid">
+            <div class="field"><label for="f_t_as">Người thực hiện</label><select class="select" id="f_t_as" name="assignee_id"><option value="">— Chưa giao —</option><% for (const m of projectMembers) { %><option value="<%= m.id %>"><%= m.code %> · <%= m.full_name %></option><% } %></select></div>
+            <%- include('../partials/field', { name: 'due_date', label: 'Hạn', type: 'date' }) %>
+          </div>
+          <button class="btn btn-primary btn-sm">Giao nhiệm vụ</button>
+        </form></details>
+    <% } %>
+  </section>
+  <% } %>
+
+  <!-- Sản phẩm bàn giao -->
+  <% if (project && acc.workspace) { %>
+  <section class="card" id="deliverables">
+    <div class="card-head"><h2>Sản phẩm bàn giao</h2>
+      <% if (acc.isCustomer) { %><span class="small muted"><%- icon(fin.paidInFull ? 'download' : 'lock') %> File gốc <%= fin.paidInFull ? 'đã mở tải' : 'mở khi thanh toán đủ' %></span><% } %></div>
+    <% if (!deliverables.length) { %><p class="muted small">Chưa có sản phẩm<%= acc.isCustomer ? ' được gửi tới bạn' : '' %>.</p><% } %>
+    <div class="stack">
+      <% for (const d of deliverables) { const lockedForCustomer = acc.isCustomer && d.kind === 'final' && !fin.paidInFull; %>
+        <div class="card" style="padding: var(--sp-4)">
+          <div class="row between">
+            <div><span class="tag"><%= L.DELIVERABLE_KIND[d.kind] %> v<%= d.version %></span> <strong><%= d.title %></strong>
+              <div class="small muted">Nộp bởi <span class="mono"><%= d.by_code %></span> · <%= fmt.dateTime(d.created_at) %></div></div>
+            <div class="row"><%- acc.isCustomer ? '' : badge(L.REVIEW_STATUS, d.review_status) %>
+              <% if (lockedForCustomer) { %><span class="btn btn-secondary btn-sm" aria-disabled="true"><%- icon('lock') %>Khóa tới khi trả đủ</span>
+              <% } else { %><a class="btn btn-secondary btn-sm" href="<%= fileUrl('deliverable', d.id) %>" <%- d.kind !== 'final' && acc.isCustomer ? 'target="_blank" rel="noopener"' : '' %>><%- icon(d.kind !== 'final' && acc.isCustomer ? 'eye' : 'download') %><%= d.kind !== 'final' && acc.isCustomer ? 'Xem' : 'Tải' %></a><% } %></div>
+          </div>
+          <% if (d.note) { %><p class="small" style="margin-top: var(--sp-2)"><%= d.note %></p><% } %>
+          <% if (d.review_note && !acc.isCustomer) { %><p class="small muted">Kiểm duyệt: <%= d.review_note %></p><% } %>
+          <% if (can.reviewer && d.review_status === 'PENDING') { %>
+            <form method="post" action="<%= base %>/deliverables/<%= d.id %>/review" style="margin-top: var(--sp-3)"><%- C %>
+              <input class="input" name="note" placeholder="Nhận xét (bắt buộc khi yêu cầu sửa)" aria-label="Nhận xét kiểm duyệt">
+              <div class="row" style="margin-top: var(--sp-2)">
+                <button class="btn btn-primary btn-sm" name="approve" value="1"><%- icon('check') %>Đạt<%= d.kind !== 'final' ? ' — gửi khách' : '' %></button>
+                <button class="btn btn-secondary btn-sm" name="approve" value="0">Yêu cầu sửa</button>
+              </div></form>
+          <% } %>
+        </div>
+      <% } %>
+    </div>
+    <% if (can.deliver) { %>
+      <details class="disclose" style="margin-top: var(--sp-4)" open><summary><%- icon('upload') %> Nộp sản phẩm</summary>
+        <form method="post" action="<%= base %>/deliverables?_csrf=<%= csrf() %>" enctype="multipart/form-data">
+          <div class="form-grid">
+            <div class="field"><label for="f_dk">Loại</label><select class="select" id="f_dk" name="kind"><option value="demo">Demo (khách xem)</option><option value="preview">Preview (khách xem)</option><option value="final">File gốc (khóa tới khi trả đủ)</option></select></div>
+            <div class="field"><label for="f_dt">Nhiệm vụ</label><select class="select" id="f_dt" name="task_id"><option value="">—</option><% for (const t of tasks.filter((t) => t.assignee_id === user.id)) { %><option value="<%= t.id %>"><%= t.title %></option><% } %></select></div>
+          </div>
+          <%- include('../partials/field', { name: 'title', label: 'Tiêu đề' }) %>
+          <%- include('../partials/field', { name: 'note', label: 'Ghi chú cho người kiểm duyệt', type: 'textarea', attrs: 'rows="2"' }) %>
+          <div class="field"><label for="f_df">Tệp <span class="req">*</span></label><input class="input" id="f_df" type="file" name="file" required></div>
+          <button class="btn btn-primary">Nộp</button>
+        </form></details>
+    <% } %>
+    <% if (can.decide) { const shown = deliverables.find((d) => d.kind !== 'final'); %>
+      <form method="post" action="<%= base %>/decision" class="card" style="margin-top: var(--sp-4); background: var(--c-accent-100)"><%- C %>
+        <h3>Phản hồi nghiệm thu</h3>
+        <input type="hidden" name="deliverable_id" value="<%= shown?.id || '' %>">
+        <%- include('../partials/field', { name: 'note', label: 'Nhận xét / nội dung cần chỉnh', type: 'textarea', attrs: 'rows="3"' }) %>
+        <div class="row">
+          <button class="btn btn-primary" name="decision" value="ACCEPT" <%- hasFinal ? '' : 'disabled' %>><%- icon('check') %>Chấp nhận sản phẩm</button>
+          <button class="btn btn-secondary" name="decision" value="REVISE">Yêu cầu chỉnh sửa (trong phạm vi)</button>
+          <button class="btn btn-ghost" name="decision" value="CHANGE_REQUEST">Yêu cầu thay đổi ngoài phạm vi</button>
+        </div>
+        <% if (!hasFinal) { %><p class="small muted" style="margin-top: var(--sp-2)">Nút chấp nhận sẽ mở khi đội dự án đã chuẩn bị xong file gốc.</p><% } %>
+      </form>
+    <% } %>
+    <% if (can.signOff) { %>
+      <form method="post" action="<%= base %>/signoff" class="card" style="margin-top: var(--sp-4); background: var(--c-brand-50)"><%- C %>
+        <h3>Biên bản nghiệm thu</h3>
+        <p class="small">Bạn đã thanh toán đủ và có thể tải file gốc. Ký biên bản để xác nhận nghĩa vụ bàn giao đã hoàn tất.</p>
+        <%- include('../partials/field', { name: 'note', label: 'Ghi chú (không bắt buộc)', attrs: '' }) %>
+        <button class="btn btn-primary" data-confirm="Xác nhận ký biên bản nghiệm thu?">Ký biên bản nghiệm thu</button>
+      </form>
+    <% } %>
+    <% if (acceptances.length) { %>
+      <h3 style="margin-top: var(--sp-5)">Lịch sử nghiệm thu</h3>
+      <ul class="timeline"><% for (const a of acceptances) { %><li><strong><%= { ACCEPT: 'Chấp nhận', REVISE: 'Yêu cầu chỉnh sửa', CHANGE_REQUEST: 'Thay đổi ngoài phạm vi', SIGN_OFF: 'Ký biên bản nghiệm thu' }[a.decision] %></strong> <%= a.note ? '— ' + a.note : '' %><time><%= a.actor_code %> · <%= fmt.dateTime(a.created_at) %></time></li><% } %></ul>
+    <% } %>
+  </section>
+  <% } %>
+
+  <!-- Hoa hồng (Admin) -->
+  <% if (can.admin && allocations) { %>
+  <section class="card" id="commissions">
+    <div class="card-head"><h2>Đối soát &amp; hoa hồng</h2>
+      <div class="row">
+        <form method="post" action="/admin/orders/<%= order.id %>/reconcile"><%- C %><button class="btn btn-primary btn-sm" data-confirm="Tính hoa hồng cho các khoản thu đã xác nhận nhưng chưa đối soát?">Đối soát khoản thu mới</button></form>
+        <% if (S === 'RECONCILIATION') { %><form method="post" action="/admin/orders/<%= order.id %>/complete"><%- C %><button class="btn btn-accent btn-sm">Xác nhận hoàn tất</button></form><% } %>
+        <% if (S === 'COMPLETED') { %><form method="post" action="/admin/orders/<%= order.id %>/close"><%- C %><button class="btn btn-secondary btn-sm" data-confirm="Đóng Order sẽ thu hồi quyền truy cập workspace của freelancer. Tiếp tục?">Đóng Order</button></form><% } %>
+      </div></div>
+    <p class="small muted">Doanh thu thuần = thực thu − thuế gián thu − giảm trừ. Order hoàn tất không làm hệ thống tự chia tiền: M&amp;T phải bấm đối soát.</p>
+    <div class="table-wrap"><table class="table">
+      <thead><tr><th>Đợt thu</th><th>Người nhận</th><th>Vai trò</th><th class="num">Cơ sở</th><th class="num">Tỷ lệ</th><th class="num">Phân công</th><th class="num">Số tiền</th><th>Trạng thái</th></tr></thead>
+      <tbody>
+        <% if (!commissions.length) { %><tr><td colspan="8" class="muted">Chưa đối soát.</td></tr><% } %>
+        <% for (const c of commissions) { %>
+          <tr><td class="mono small">#<%= c.payment_id %></td><td><%= c.user_code ? `${c.user_code} · ${c.full_name}` : 'M&T' %><% if (c.reason) { %><div class="small muted"><%= c.reason %></div><% } %></td>
+            <td><%= L.ROLES[c.role]?.label || c.role %></td><td class="num"><%= fmt.num(c.base_amount) %></td><td class="num"><%= fmt.pct(c.rate_bp) %></td><td class="num"><%= fmt.pct(c.share_bp) %></td>
+            <td class="num"><strong><%= fmt.vnd(c.amount) %></strong></td><td><%- badge(L.COMMISSION_STATUS, c.status) %></td></tr>
+        <% } %>
+      </tbody>
+    </table></div>
+    <details class="disclose" style="margin-top: var(--sp-4)"><summary>Điều chỉnh tỷ lệ đã chốt của Order (cần lý do)</summary>
+      <form method="post" action="/admin/orders/<%= order.id %>/allocations"><%- C %>
+        <div class="form-grid" style="grid-template-columns: repeat(3, 1fr)">
+          <% for (const k of RATE_KEYS) { %><div class="field"><label for="aa_<%= k %>"><%= L.ROLES[k].label %> %</label><input class="input" id="aa_<%= k %>" name="rate_<%= k %>" type="number" step="0.01" min="0" max="100" value="<%= pctInput(allocations[k] || 0) %>"></div><% } %>
+        </div>
+        <%- include('../partials/field', { name: 'reason', label: 'Lý do điều chỉnh', required: true }) %>
+        <button class="btn btn-secondary btn-sm">Lưu điều chỉnh</button>
+      </form></details>
+  </section>
+  <% } %>
+
+  <!-- Trao đổi -->
+  <% if (acc.workspace) { %>
+  <section class="card" id="messages">
+    <div class="card-head"><h2>Trao đổi</h2><span class="small muted">Khách hàng và các thành viên của Order</span></div>
+    <% if (!messages.length) { %><p class="muted small">Chưa có tin nhắn.</p><% } %>
+    <% for (const m of messages) { %>
+      <div class="msg <%= m.user_id === user.id ? 'mine' : '' %>">
+        <header><strong><%= m.kind === 'admin' ? 'M&T' : m.full_name || m.code %></strong><span class="mono"><%= m.code %></span><span><%= fmt.dateTime(m.created_at) %></span></header>
+        <div style="white-space:pre-line"><%= m.body %></div>
+        <% if (m.file_path) { %><a class="tag" href="<%= fileUrl('message', m.id) %>"><%- icon('file') %> <%= m.file_name %></a><% } %>
+      </div>
+    <% } %>
+    <% if (can.message) { %>
+      <form method="post" action="<%= base %>/messages?_csrf=<%= csrf() %>" enctype="multipart/form-data" style="margin-top: var(--sp-3)">
+        <label class="sr-only" for="f_msg">Tin nhắn</label>
+        <textarea class="textarea" id="f_msg" name="body" rows="2" placeholder="Nhập nội dung trao đổi…"></textarea>
+        <div class="row between" style="margin-top: var(--sp-2)">
+          <input type="file" name="file" aria-label="Đính kèm tệp" class="small">
+          <button class="btn btn-primary btn-sm"><%- icon('message') %>Gửi</button>
+        </div>
+      </form>
+    <% } %>
+  </section>
+  <% } %>
+
+  <!-- Khiếu nại -->
+  <% if (can.dispute || disputes.length) { %>
+  <section class="card" id="disputes">
+    <div class="card-head"><h2>Khiếu nại &amp; yêu cầu</h2></div>
+    <% for (const d of disputes) { %>
+      <div class="msg"><header><strong><%= d.title %></strong> <%- badge(L.DISPUTE_STATUS, d.status) %> <span><%= L.DISPUTE_KIND[d.kind] %> · <%= d.by_code %> · <%= fmt.dateTime(d.created_at) %></span></header>
+        <div style="white-space:pre-line"><%= d.body %></div>
+        <% if (d.evidence_path) { %><a class="tag" href="<%= fileUrl('dispute', d.id) %>"><%- icon('file') %> <%= d.evidence_name %></a><% } %>
+        <% if (d.resolution) { %><p class="small" style="margin-top: var(--sp-2)"><strong>M&amp;T:</strong> <%= d.resolution %></p><% } %></div>
+    <% } %>
+    <% if (can.dispute) { %>
+      <details class="disclose"><summary>Gửi khiếu nại / yêu cầu tới M&amp;T</summary>
+        <form method="post" action="<%= base %>/disputes?_csrf=<%= csrf() %>" enctype="multipart/form-data">
+          <div class="field"><label for="f_dkind">Loại</label><select class="select" id="f_dkind" name="kind"><% for (const [k, t] of Object.entries(L.DISPUTE_KIND)) { %><option value="<%= k %>"><%= t %></option><% } %></select></div>
+          <%- include('../partials/field', { name: 'title', label: 'Tiêu đề', required: true }) %>
+          <%- include('../partials/field', { name: 'body', label: 'Nội dung', type: 'textarea', required: true }) %>
+          <div class="field"><label for="f_ev">Bằng chứng</label><input class="input" id="f_ev" type="file" name="evidence"></div>
+          <button class="btn btn-secondary">Gửi tới M&amp;T</button>
+        </form></details>
+    <% } %>
+  </section>
+  <% } %>
+</div>
+
+<!-- Cột phải -->
+<aside class="stack" style="min-width:0">
+  <div class="card">
+    <h3>Khách hàng</h3>
+    <dl class="kv">
+      <dt>Mã</dt><dd class="mono"><%= customer.code %></dd>
+      <dt>Tên</dt><dd><%= customer.full_name || '—' %></dd>
+      <% if (customer.company) { %><dt>Doanh nghiệp</dt><dd><%= customer.company %></dd><% } %>
+      <% if (acc.seeContact) { %>
+        <dt>Gmail</dt><dd><%= customer.email || '—' %></dd>
+        <dt>Điện thoại</dt><dd><%= customer.phone || '—' %></dd>
+      <% } else { %><dt>Liên hệ</dt><dd class="small muted">Ẩn theo phân quyền</dd><% } %>
+    </dl>
+  </div>
+  <% if (live.length) { %>
+  <div class="card">
+    <h3>Người phụ trách</h3>
+    <ul class="timeline">
+      <% for (const a of live) { %><li><strong><%= L.ROLES[a.role].label %></strong> · <%= a.full_name %><time class="mono"><%= a.code %><%= a.is_primary ? ' · phụ trách chính' : '' %></time></li><% } %>
+      <li><strong>Dự phòng</strong> · M&amp;T Admin<time>Tiếp nhận khi cần chuyển giao</time></li>
+    </ul>
+  </div>
+  <% } %>
+  <% if (can.cancel) { %>
+    <details class="disclose"><summary>Hủy Order</summary>
+      <form method="post" action="<%= base %>/cancel"><%- C %>
+        <%- include('../partials/field', { name: 'reason', label: 'Lý do', required: can.admin }) %>
+        <button class="btn btn-danger btn-sm" data-confirm="Hủy Order này?">Hủy Order</button>
+      </form></details>
+  <% } %>
+  <div class="card">
+    <h3>Lịch sử trạng thái</h3>
+    <ul class="timeline">
+      <% for (const h of history) { %><li><%- badge(L.ORDER_STATUS, h.to_status) %><% if (h.note) { %><div class="small"><%= h.note %></div><% } %><time><%= h.actor_code || 'Hệ thống' %> · <%= fmt.dateTime(h.created_at) %></time></li><% } %>
+    </ul>
+  </div>
+</aside>
+</div>
+<%- include('../partials/app-end') %>

@@ -1,0 +1,21 @@
+<%- include('../partials/app-start') %>
+<div class="page-head"><div><h1>Nhật ký hệ thống</h1><p class="muted">Bất biến: hệ thống chặn sửa và xóa ở tầng cơ sở dữ liệu. Hiển thị 300 dòng mới nhất.</p></div></div>
+<nav class="tabs" aria-label="Lọc theo đối tượng">
+  <% for (const [k, t] of Object.entries({ '': 'Tất cả', order: 'Order', payment: 'Thanh toán', commission: 'Hoa hồng', payout: 'Chi trả', user: 'Tài khoản', assignment: 'Phân công', rate_policy: 'Tỷ lệ' })) { %>
+    <a href="?entity=<%= k %>" <%- entity === k ? 'aria-current="page"' : '' %>><%= t %></a>
+  <% } %>
+</nav>
+<div class="card flush"><div class="table-wrap"><table class="table">
+  <thead><tr><th>Thời điểm</th><th>Người thực hiện</th><th>Hành động</th><th>Đối tượng</th><th>Thay đổi</th><th>Lý do</th></tr></thead>
+  <tbody><% for (const a of list) { %>
+    <tr>
+      <td class="nowrap small"><%= fmt.dateTime(a.created_at) %></td>
+      <td class="mono small"><%= a.actor_code || 'Hệ thống' %></td>
+      <td class="mono small"><%= a.action %></td>
+      <td class="small"><% if (a.entity === 'order') { %><a href="/orders/<%= a.entity_id %>">order #<%= a.entity_id %></a><% } else if (a.entity === 'user') { %><a href="/admin/accounts/<%= a.entity_id %>">user #<%= a.entity_id %></a><% } else { %><%= a.entity %> #<%= a.entity_id %><% } %></td>
+      <td class="mono small" style="max-width:380px; overflow-wrap:anywhere"><%= a.before_json ? a.before_json + ' → ' : '' %><%= a.after_json || '' %></td>
+      <td class="small"><%= a.reason || '' %></td>
+    </tr>
+  <% } %></tbody>
+</table></div></div>
+<%- include('../partials/app-end') %>

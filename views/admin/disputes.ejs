@@ -1,0 +1,23 @@
+<%- include('../partials/app-start') %>
+<div class="page-head"><div><h1>Khiếu nại &amp; tranh chấp</h1><p class="muted">Khách hàng và freelancer gửi phản hồi kèm bằng chứng. M&amp;T xem xét và ghi kết luận.</p></div></div>
+<% if (!list.length) { %><div class="card empty"><%- icon('check') %><p>Không có yêu cầu nào.</p></div><% } %>
+<div class="stack">
+  <% for (const d of list) { %>
+    <article class="card">
+      <div class="card-head">
+        <div><h3><%= d.title %></h3><div class="small muted"><a class="mono" href="/orders/<%= d.order_id %>#disputes"><%= d.code %></a> <%= d.order_title %> · <%= L.DISPUTE_KIND[d.kind] %> · <%= d.by_code %> (<%= d.by_kind === 'customer' ? 'khách hàng' : 'freelancer' %>) · <%= fmt.dateTime(d.created_at) %></div></div>
+        <%- badge(L.DISPUTE_STATUS, d.status) %>
+      </div>
+      <p style="white-space:pre-line"><%= d.body %></p>
+      <% if (d.evidence_path) { %><a class="tag" href="/files/dispute/<%= d.id %>"><%- icon('file') %> <%= d.evidence_name %></a><% } %>
+      <% if (d.status === 'OPEN') { %>
+        <form method="post" action="/admin/disputes/<%= d.id %>" style="margin-top: var(--sp-4)">
+          <input type="hidden" name="_csrf" value="<%= csrf() %>">
+          <%- include('../partials/field', { name: 'resolution', label: 'Kết luận xử lý', type: 'textarea', required: true, attrs: 'rows="2"', hint: 'Nếu cần hoàn tiền hoặc báo giá bổ sung, thao tác trên trang Order' }) %>
+          <div class="row"><button class="btn btn-primary btn-sm" name="status" value="RESOLVED">Đã giải quyết</button><button class="btn btn-secondary btn-sm" name="status" value="REJECTED">Bác bỏ</button></div>
+        </form>
+      <% } else { %><p class="small"><strong>Kết luận:</strong> <%= d.resolution %> <span class="muted">· <%= fmt.dateTime(d.resolved_at) %></span></p><% } %>
+    </article>
+  <% } %>
+</div>
+<%- include('../partials/app-end') %>
