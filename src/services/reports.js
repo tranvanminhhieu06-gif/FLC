@@ -54,7 +54,7 @@ SELECT strftime('%Y-%m', confirmed_at, '+7 hours') AS month,      -- quy về gi
 
 /*
  * Phễu: số Order (gửi trong kỳ) đã TỪNG đạt mỗi mốc.
- * Dựa trên order_status_history nên Order bị trả lại / quay vòng vẫn chỉ đếm một lần (COUNT DISTINCT).
+ * Dựa trên status_history (entity = 'order') nên Order bị trả lại / quay vòng vẫn chỉ đếm một lần (COUNT DISTINCT).
  */
 const SQL_FUNNEL = `
 WITH cohort AS (
@@ -62,8 +62,9 @@ WITH cohort AS (
 ),
 reached AS (
   SELECT h.order_id, h.to_status
-    FROM order_status_history h
+    FROM status_history h
     JOIN cohort c ON c.id = h.order_id
+   WHERE h.entity = 'order'
 )
 SELECT
   (SELECT COUNT(*) FROM cohort)                                                         AS submitted,
@@ -103,7 +104,7 @@ SELECT status, COUNT(*) AS n
 const SQL_COMMISSION_BY_ROLE = `
 SELECT role,
        SUM(CASE WHEN status = 'PENDING_APPROVAL' THEN amount ELSE 0 END) AS pending,
-       SUM(CASE WHEN status = 'APPROVED'         THEN amount ELSE 0 END) AS approved,
+       SUM(CASE WHEN status IN ('APPROVED', 'PAYABLE') THEN amount ELSE 0 END) AS approved,
        SUM(CASE WHEN status = 'PAID'             THEN amount ELSE 0 END) AS paid,
        SUM(CASE WHEN status = 'VOID'             THEN amount ELSE 0 END) AS voided
   FROM commissions
@@ -117,12 +118,12 @@ SELECT
   (SELECT COUNT(*) FROM users WHERE kind <> 'admin' AND status = 'PENDING')
     + (SELECT COUNT(DISTINCT user_id) FROM user_roles r JOIN users u ON u.id = r.user_id
         WHERE r.status = 'PENDING' AND u.status = 'ACTIVE')                                  AS accounts,
-  (SELECT COUNT(*) FROM payments WHERE confirmed_at IS NULL AND rejected = 0)               AS payments,
+  (SELECT COUNT(*) FROM payments WHERE status = 'DECLARED')                                AS payments,
   (SELECT COUNT(*) FROM orders WHERE status = 'PENDING_MATCH_APPROVAL')                     AS match_approvals,
   (SELECT COUNT(*) FROM orders WHERE status = 'RECONCILIATION')                             AS reconciliation,
   (SELECT COUNT(*) FROM commissions WHERE status = 'PENDING_APPROVAL')                      AS commissions,
   (SELECT COUNT(*) FROM disputes WHERE status = 'OPEN')                                     AS disputes,
-  (SELECT COALESCE(SUM(amount), 0) FROM commissions WHERE status = 'APPROVED' AND payout_id IS NULL) AS payable`;
+  (SELECT COALESCE(SUM(amount), 0) FROM commissions WHERE status IN ('APPROVED', 'PAYABLE')) AS payable`;
 
 /*
  * Hiệu suất freelancer:
@@ -164,7 +165,7 @@ deliv_stats AS (
 earned AS (
   SELECT user_id, SUM(amount) AS earned
     FROM commissions
-   WHERE status IN ('APPROVED', 'PAID') AND user_id IS NOT NULL
+   WHERE status IN ('APPROVED', 'PAYABLE', 'PAID') AND user_id IS NOT NULL
    GROUP BY user_id
 )
 SELECT u.id, u.code, u.full_name, fp.availability, a.roles,

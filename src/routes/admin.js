@@ -84,6 +84,7 @@ const orderAct = (path, fn, msg) => router.post(`/orders/:id/${path}`, act((req)
 
 orderAct('approve-plan', (req, id) => assignment.approvePlan(id, req.user.id, readRates(req.body)), 'Đã duyệt — nhân sự và tỷ lệ đã được khóa, nhóm làm việc đã tạo');
 orderAct('return-plan', (req, id) => assignment.returnPlan(id, req.user.id, req.body.note), 'Đã trả phương án về Account');
+orderAct('reject-service', (req, id) => orders.rejectService(id, req.user.id, req.body.reason), 'Đã từ chối cung cấp dịch vụ cho Order');
 orderAct('deposit-exception', (req, id) => orders.depositException(id, req.user.id, req.body.reason), 'Đã phê duyệt ngoại lệ đặt cọc');
 orderAct('reconcile', (req, id) => {
   const n = commission.reconcile({ orderId: id, adminId: req.user.id });
@@ -114,12 +115,12 @@ router.get('/finance', (req, res) => {
   const pendingPayments = db.all(
     `SELECT p.*, o.code, o.title, c.value, c.deposit_amount, u.code AS customer_code FROM payments p
        JOIN orders o ON o.id = p.order_id JOIN users u ON u.id = o.customer_id LEFT JOIN contracts c ON c.order_id = o.id
-      WHERE p.confirmed_at IS NULL AND p.rejected = 0 ORDER BY p.id`,
+      WHERE p.status = 'DECLARED' ORDER BY p.id`,
   );
   const toReconcile = db.all(
     `SELECT o.id, o.code, o.title, o.status, COUNT(p.id) AS n, SUM(p.amount - p.tax - p.deductions) AS net
        FROM payments p JOIN orders o ON o.id = p.order_id
-      WHERE p.confirmed_at IS NOT NULL AND p.reconciled = 0 AND EXISTS (SELECT 1 FROM revenue_allocations r WHERE r.order_id = o.id)
+      WHERE p.status = 'CONFIRMED' AND EXISTS (SELECT 1 FROM revenue_allocations r WHERE r.order_id = o.id)
       GROUP BY o.id ORDER BY o.id`,
   );
   const pendingCommissions = db.all(
@@ -127,13 +128,26 @@ router.get('/finance', (req, res) => {
        JOIN orders o ON o.id = c.order_id JOIN users u ON u.id = c.user_id
       WHERE c.status = 'PENDING_APPROVAL' ORDER BY c.order_id, c.payment_id, c.role`,
   );
-  const payable = db.all(
-    `SELECT u.id, u.code, u.full_name, f.bank_name, f.bank_account, f.bank_holder, SUM(c.amount) AS total, COUNT(*) AS n
-       FROM commissions c JOIN users u ON u.id = c.user_id JOIN freelancer_profiles f ON f.user_id = u.id
-      WHERE c.status = 'APPROVED' AND c.payout_id IS NULL GROUP BY u.id HAVING total > 0 ORDER BY total DESC`,
+  // Đã duyệt, chưa vào kỳ. Dòng thuộc Order còn tranh chấp mở chưa đủ điều kiện đưa vào kỳ thanh toán.
+  const approved = db.all(
+    `WITH lines AS (
+       SELECT c.user_id, c.amount,
+              EXISTS (SELECT 1 FROM disputes d WHERE d.order_id = c.order_id AND d.status = 'OPEN') AS blocked
+         FROM commissions c WHERE c.status = 'APPROVED' AND c.payout_id IS NULL
+     )
+     SELECT u.id, u.code, u.full_name,
+            SUM(CASE WHEN l.blocked = 0 THEN l.amount ELSE 0 END) AS ready, SUM(CASE WHEN l.blocked = 0 THEN 1 ELSE 0 END) AS n,
+            SUM(CASE WHEN l.blocked = 1 THEN l.amount ELSE 0 END) AS blocked
+       FROM lines l JOIN users u ON u.id = l.user_id GROUP BY u.id ORDER BY ready DESC`,
   );
-  const payouts = db.all('SELECT p.*, u.code, u.full_name FROM payouts p JOIN users u ON u.id = p.user_id ORDER BY p.id DESC LIMIT 30');
-  res.render('admin/finance', { title: 'Tài chính & đối soát', pendingPayments, toReconcile, pendingCommissions, payable, payouts });
+  const scheduled = db.all(
+    `SELECT p.*, u.code, u.full_name, f.bank_name, f.bank_account, f.bank_holder, (SELECT COUNT(*) FROM commissions c WHERE c.payout_id = p.id) AS n
+       FROM payouts p JOIN users u ON u.id = p.user_id LEFT JOIN freelancer_profiles f ON f.user_id = u.id
+      WHERE p.status = 'SCHEDULED' ORDER BY p.period, p.id`,
+  );
+  const payouts = db.all("SELECT p.*, u.code, u.full_name FROM payouts p JOIN users u ON u.id = p.user_id WHERE p.status = 'PAID' ORDER BY p.paid_at DESC LIMIT 30");
+  const period = new Date().toISOString().slice(0, 7);
+  res.render('admin/finance', { title: 'Tài chính & đối soát', pendingPayments, toReconcile, pendingCommissions, approved, scheduled, payouts, period });
 });
 
 router.post('/payments/:id/confirm', act((req) => {
@@ -147,9 +161,11 @@ router.post('/commissions/approve', act((req) => {
   const ids = [].concat(req.body.ids || []).map(Number).filter(Boolean);
   if (!ids.length) fail('Chọn ít nhất một dòng');
   commission.approve({ ids, adminId: req.user.id });
-}, 'Đã duyệt hoa hồng'));
+}, 'Đã ghi nhận M&T duyệt — dòng chuyển "Đã duyệt" khi freelancer cũng xác nhận'));
+router.post('/commissions/:id/dismiss', act((req) => commission.dismissObjection({ id: Number(req.params.id), adminId: req.user.id, reason: req.body.reason }), 'Đã giữ nguyên số tiền — chờ freelancer xác nhận lại'));
 router.post('/commissions/:id/void', act((req) => commission.voidLine({ id: Number(req.params.id), adminId: req.user.id, reason: req.body.reason }), 'Đã hủy dòng hoa hồng'));
-router.post('/payouts', act((req) => commission.payout({ userId: Number(req.body.user_id), adminId: req.user.id, ref: req.body.ref }), 'Đã ghi nhận chi trả'));
+router.post('/payouts', act((req) => commission.schedulePayout({ userId: Number(req.body.user_id), adminId: req.user.id, period: req.body.period }), 'Đã đưa vào kỳ thanh toán'));
+router.post('/payouts/:id/paid', act((req) => commission.markPaid({ payoutId: Number(req.params.id), adminId: req.user.id, ref: req.body.ref }), 'Đã ghi nhận chi trả'));
 
 /* ---------- Cấu hình tỷ lệ ---------- */
 

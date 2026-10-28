@@ -11,7 +11,8 @@ const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '
 /** Badge từ một bảng nhãn trong labels.js */
 function badge(map, key) {
   const item = map[key] || { label: key, tone: 'neutral' };
-  return `<span class="badge ${item.tone}">${esc(item.label)}</span>`;
+  const title = item.desc ? ` title="${esc((item.code ? item.code + ' · ' : '') + item.desc)}"` : '';
+  return `<span class="badge ${item.tone}"${title}>${esc(item.label)}</span>`;
 }
 
 function loadUser(req, res, next) {

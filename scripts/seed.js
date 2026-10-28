@@ -143,10 +143,16 @@ const finA = finance.declarePayment({ orderId: A, actorId: cu.an, kind: 'install
 finance.confirmPayment({ paymentId: finA, adminId, tax: 2727273 });
 orders.signOff(A, cu.an, 'Đã nhận đủ sản phẩm');
 commission.reconcile({ orderId: A, adminId });
-commission.approve({ ids: db.all("SELECT id FROM commissions WHERE order_id = ? AND status = 'PENDING_APPROVAL'", A).map((r) => r.id), adminId });
+// Hoa hồng cần hai bên: từng freelancer xác nhận dòng của mình, M&T duyệt
+const linesA = db.all("SELECT id, user_id FROM commissions WHERE order_id = ? AND status = 'PENDING_APPROVAL'", A);
+for (const uid of new Set(linesA.map((l) => l.user_id))) {
+  commission.confirmByUser({ ids: linesA.filter((l) => l.user_id === uid).map((l) => l.id), userId: uid });
+}
+commission.approve({ ids: linesA.map((l) => l.id), adminId });
 flow.transition(A, 'COMPLETED', adminId, 'M&T xác nhận hoàn tất đối soát');
-commission.payout({ userId: fl.p1, adminId, ref: 'CHI-0001' });
-commission.payout({ userId: fl.pm, adminId, ref: 'CHI-0002' });
+const period = new Date().toISOString().slice(0, 7);
+commission.markPaid({ payoutId: commission.schedulePayout({ userId: fl.p1, adminId, period }), adminId, ref: 'CHI-0001' });
+commission.schedulePayout({ userId: fl.pm, adminId, period });   // PM: đã vào kỳ, chờ chuyển khoản
 flow.transition(A, 'CLOSED', adminId, 'Đóng Order');
 // Lùi ngày khoản thu để biểu đồ 12 tháng có dữ liệu (chỉ dữ liệu demo)
 db.run("UPDATE payments SET confirmed_at = datetime('now', '-62 days'), created_at = datetime('now', '-62 days') WHERE id = ?", depA);
@@ -172,6 +178,8 @@ assignment.approvePlan(B, adminId, DEFAULT_RATES);
 const tB = orders.createTask(B, account, { title: 'Phác thảo 3 phương án logo', assignee_id: fl.p2, due_date: '2026-11-05' });
 orders.submitDeliverable(B, { id: fl.p2, kind: 'freelancer' }, { kind: 'preview', title: '3 phương án logo', task_id: tB }, sample('logo-preview.png', 'png'));
 commission.reconcile({ orderId: B, adminId });   // đối soát đợt cọc → hoa hồng chờ duyệt
+// Account đã đồng ý số tiền, còn chờ M&T duyệt; Project chưa xác nhận
+commission.confirmByUser({ ids: db.all("SELECT id FROM commissions WHERE order_id = ? AND user_id = ?", B, fl.account).map((r) => r.id), userId: fl.account });
 
 // --- Order C: đang chờ khách xác nhận báo giá ---
 const C = orders.create(cu.an, { title: 'Chiến dịch quảng cáo Tết 2027', service_type: 'Marketing & quảng cáo', description: 'Quảng cáo Facebook + TikTok cho dòng sản phẩm mới', budget: 60000000, deadline: '2027-01-20' }, true);

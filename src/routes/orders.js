@@ -17,7 +17,6 @@ const router = express.Router();
 router.use(requireLogin);
 
 const WORKING = ['IN_PROGRESS', 'IN_REVIEW', 'DEMO', 'PREVIEW'];
-const CUSTOMER_CANCEL = ['DRAFT', 'PENDING_INTAKE', 'CONSULTING', 'QUOTED', 'REJECTED', 'AWAITING_DEPOSIT'];
 
 /** Nạp Order + quyền; dừng với 404 nếu không có quyền xem */
 function load(req, res, needWorkspace = false) {
@@ -53,7 +52,9 @@ function capabilities(user, order, acc, fin) {
     signOff: owner && s === 'ACCEPTANCE',
     message: acc.workspace && !['CLOSED', 'CANCELLED'].includes(s),
     dispute: acc.workspace && !['CLOSED', 'CANCELLED', 'DRAFT'].includes(s),
-    cancel: (owner && CUSTOMER_CANCEL.includes(s)) || (admin && flow.canTransition(s, 'CANCELLED')),
+    cancel: flow.permitted(order, user, 'CANCELLED'),
+    cancelNeedsReason: flow.ADMIN_ONLY_CANCEL.includes(s),
+    rejectService: admin && flow.permitted(order, user, 'REJECTED'),
     seeMoney: admin || owner || r.has('SALES') || r.has('ACCOUNT'),
   };
 }
@@ -69,7 +70,15 @@ router.get('/:id', (req, res) => {
   const view = {
     title: `${order.code} · ${order.title}`,
     order, acc, can, fin, customer,
-    history: db.all('SELECT h.*, u.code AS actor_code, u.full_name AS actor_name FROM order_status_history h LEFT JOIN users u ON u.id = h.actor_id WHERE h.order_id = ? ORDER BY h.id DESC', id),
+    // Lịch sử 4 trường trạng thái — mỗi người chỉ thấy phần thuộc quyền xem của mình
+    history: db.all(
+      `SELECT h.*, u.code AS actor_code FROM status_history h LEFT JOIN users u ON u.id = h.actor_id
+        WHERE h.order_id = ? AND (h.entity = 'order' OR (h.entity = 'task' AND ?) OR (h.entity = 'payment' AND ?) OR (h.entity = 'commission' AND ?))
+        ORDER BY h.id DESC`, id, ws ? 1 : 0, can.seeMoney ? 1 : 0, can.admin ? 1 : 0,
+    ),
+    payState: finance.orderPaymentState(id, fin),
+    taskCounts: ws ? db.all('SELECT status, COUNT(*) AS n FROM tasks WHERE order_id = ? GROUP BY status', id) : [],
+    commissionCounts: can.admin ? db.all('SELECT status, COUNT(*) AS n, SUM(amount) AS amount FROM commissions WHERE order_id = ? AND user_id IS NOT NULL GROUP BY status', id) : [],
     assignments: db.all(
       `SELECT a.*, u.code, u.full_name, f.member_code FROM order_assignments a JOIN users u ON u.id = a.user_id
          LEFT JOIN freelancer_profiles f ON f.user_id = u.id WHERE a.order_id = ? ORDER BY a.role, a.id`, id,
@@ -114,7 +123,6 @@ post('/:id/claim', (req, { id, acc }) => {
 }, 'Đã nhận Order');
 
 post('/:id/cancel', (req, { id, acc, order }) => {
-  if (!acc.isAdmin && !(acc.isCustomer && CUSTOMER_CANCEL.includes(order.status))) fail('Không thể hủy Order ở giai đoạn này', 403);
   flow.transition(id, 'CANCELLED', req.user.id, req.body.reason || null);
 }, 'Đã hủy Order');
 

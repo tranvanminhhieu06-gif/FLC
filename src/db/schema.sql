@@ -94,15 +94,22 @@ CREATE TABLE IF NOT EXISTS orders (
 CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status);
 CREATE INDEX IF NOT EXISTS idx_orders_customer ON orders(customer_id);
 
-CREATE TABLE IF NOT EXISTS order_status_history (
+-- Lịch sử trạng thái dùng chung cho 4 trường độc lập: order_status, task_status, payment_status, commission_status
+-- (và kỳ chi trả). Chỉ thêm mới: trạng thái cũ, mới, người thao tác, thời điểm, lý do, dữ liệu liên quan.
+CREATE TABLE IF NOT EXISTS status_history (
   id          INTEGER PRIMARY KEY,
-  order_id    INTEGER NOT NULL REFERENCES orders(id),
+  entity      TEXT NOT NULL CHECK (entity IN ('order', 'task', 'payment', 'commission', 'payout')),
+  entity_id   INTEGER NOT NULL,
+  order_id    INTEGER REFERENCES orders(id),
   from_status TEXT,
   to_status   TEXT NOT NULL,
   actor_id    INTEGER REFERENCES users(id),
-  note        TEXT,
+  reason      TEXT,
+  data_json   TEXT,
   created_at  TEXT NOT NULL DEFAULT (datetime('now'))
 );
+CREATE INDEX IF NOT EXISTS idx_hist_order ON status_history(order_id, id);
+CREATE INDEX IF NOT EXISTS idx_hist_entity ON status_history(entity, entity_id);
 
 CREATE TABLE IF NOT EXISTS order_assignments (
   id           INTEGER PRIMARY KEY,
@@ -229,8 +236,7 @@ CREATE TABLE IF NOT EXISTS payments (
   declared_by  INTEGER REFERENCES users(id),
   confirmed_by INTEGER REFERENCES users(id),
   confirmed_at TEXT,
-  rejected     INTEGER NOT NULL DEFAULT 0,
-  reconciled   INTEGER NOT NULL DEFAULT 0,
+  status       TEXT NOT NULL DEFAULT 'DECLARED' CHECK (status IN ('DECLARED', 'CONFIRMED', 'REJECTED', 'RECONCILED')),
   created_at   TEXT NOT NULL DEFAULT (datetime('now')),
   CHECK ((kind = 'refund' AND amount < 0) OR (kind <> 'refund' AND amount > 0))
 );
@@ -254,13 +260,18 @@ CREATE TABLE IF NOT EXISTS revenue_allocations (
   UNIQUE (order_id, role)
 );
 
+-- Kỳ thanh toán hoa hồng: M&T gom dòng đã duyệt (SCHEDULED, dòng → PAYABLE), chuyển khoản xong (PAID)
 CREATE TABLE IF NOT EXISTS payouts (
   id         INTEGER PRIMARY KEY,
   user_id    INTEGER NOT NULL REFERENCES users(id),
   amount     INTEGER NOT NULL,
+  period     TEXT,                              -- kỳ thanh toán, vd. 2026-10
+  status     TEXT NOT NULL DEFAULT 'SCHEDULED' CHECK (status IN ('SCHEDULED', 'PAID')),
   ref        TEXT,
   created_by INTEGER NOT NULL REFERENCES users(id),
-  paid_at    TEXT NOT NULL DEFAULT (datetime('now'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  paid_by    INTEGER REFERENCES users(id),
+  paid_at    TEXT
 );
 
 CREATE TABLE IF NOT EXISTS commissions (
@@ -274,9 +285,11 @@ CREATE TABLE IF NOT EXISTS commissions (
   rate_bp     INTEGER NOT NULL,
   share_bp    INTEGER NOT NULL,
   amount      INTEGER NOT NULL,
-  status      TEXT NOT NULL CHECK (status IN ('PENDING_APPROVAL', 'APPROVED', 'VOID', 'PAID', 'RETAINED')),
+  status      TEXT NOT NULL CHECK (status IN ('PENDING_APPROVAL', 'APPROVED', 'PAYABLE', 'PAID', 'VOID', 'RETAINED')),
   reason      TEXT,
-  approved_by INTEGER REFERENCES users(id),
+  user_confirmed_at TEXT,                    -- freelancer đồng ý số tiền
+  objection   TEXT,                          -- freelancer không đồng ý (chặn duyệt tới khi M&T xử lý)
+  approved_by INTEGER REFERENCES users(id),  -- M&T duyệt (hoặc hủy)
   approved_at TEXT,
   payout_id   INTEGER REFERENCES payouts(id),
   created_at  TEXT NOT NULL DEFAULT (datetime('now')),
@@ -340,6 +353,11 @@ BEGIN SELECT RAISE(ABORT, 'audit_logs chỉ cho phép thêm mới'); END;
 CREATE TRIGGER IF NOT EXISTS audit_no_delete BEFORE DELETE ON audit_logs
 BEGIN SELECT RAISE(ABORT, 'audit_logs chỉ cho phép thêm mới'); END;
 
+CREATE TRIGGER IF NOT EXISTS history_no_update BEFORE UPDATE ON status_history
+BEGIN SELECT RAISE(ABORT, 'status_history chỉ cho phép thêm mới'); END;
+CREATE TRIGGER IF NOT EXISTS history_no_delete BEFORE DELETE ON status_history
+BEGIN SELECT RAISE(ABORT, 'status_history chỉ cho phép thêm mới'); END;
+
 -- Khoản thu đã xác nhận không được sửa số tiền (điều chỉnh = dòng mới)
 CREATE TRIGGER IF NOT EXISTS payments_locked BEFORE UPDATE OF amount, tax, deductions, order_id ON payments
 WHEN OLD.confirmed_at IS NOT NULL
@@ -347,7 +365,7 @@ BEGIN SELECT RAISE(ABORT, 'Khoản thu đã xác nhận không được sửa �
 
 -- Hoa hồng đã duyệt/đã trả không được sửa số tiền
 CREATE TRIGGER IF NOT EXISTS commissions_locked BEFORE UPDATE OF amount, base_amount, rate_bp, share_bp, user_id, role ON commissions
-WHEN OLD.status IN ('APPROVED', 'PAID', 'RETAINED')
+WHEN OLD.status IN ('APPROVED', 'PAYABLE', 'PAID', 'RETAINED')
 BEGIN SELECT RAISE(ABORT, 'Hoa hồng đã chốt không được sửa — hãy tạo dòng điều chỉnh'); END;
 CREATE TRIGGER IF NOT EXISTS commissions_no_delete BEFORE DELETE ON commissions
 BEGIN SELECT RAISE(ABORT, 'Không được xóa dòng hoa hồng'); END;

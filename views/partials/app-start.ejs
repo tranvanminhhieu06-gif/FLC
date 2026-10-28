@@ -55,6 +55,7 @@
     <% } %>
     <div class="nav-group">
       <nav class="nav">
+        <a href="/statuses" <%- path === '/statuses' ? 'aria-current="page"' : '' %>><%- icon('list') %><span>Bảng trạng thái</span></a>
         <a href="/notifications" <%- path === '/notifications' ? 'aria-current="page"' : '' %>><%- icon('bell') %><span>Thông báo</span><% if (user.unread) { %><span class="count"><%= user.unread %><span class="sr-only"> chưa đọc</span></span><% } %></a>
       </nav>
     </div>

@@ -36,6 +36,7 @@
     <div class="row small muted"><span class="mono"><%= order.code %></span><% if (project) { %>· Nhóm <span class="mono"><%= project.code %></span><% } %>· <%= order.service_type %></div>
     <h1><%= order.title %></h1>
     <div class="row"><%- badge(L.ORDER_STATUS, S) %><% for (const r of acc.roles) { %><span class="tag">Bạn: <%= L.ROLES[r].label %></span><% } %></div>
+    <p class="small muted" style="margin:6px 0 0"><span class="mono"><%= st.code %></span> · <%= st.desc %> <a href="/statuses">Bảng trạng thái</a></p>
   </div>
   <div class="row">
     <% if (can.editDraft) { %>
@@ -53,7 +54,7 @@
   <% } %>
 </ol>
 
-<% if (S === 'CANCELLED') { %><div class="alert danger" role="status"><%- icon('x') %><div>Order đã hủy. <%= history[0]?.note || '' %></div></div><% } %>
+<% if (S === 'CANCELLED') { %><div class="alert danger" role="status"><%- icon('x') %><div>Order đã hủy. <%= history.find((h) => h.entity === 'order')?.reason || '' %></div></div><% } %>
 <% if (todo.length) { %>
   <div class="alert warn" role="status"><%- icon('target') %><div><strong>Việc cần làm:</strong><ul style="margin:4px 0 0; padding-left: 18px"><% for (const t of todo) { %><li><%= t %></li><% } %></ul></div></div>
 <% } %>
@@ -155,7 +156,7 @@
           <tr><td><%= L.PAYMENT_KIND[p.kind] %></td><td class="num"><%= fmt.vnd(p.amount) %></td>
             <% if (can.admin) { %><td class="num"><%= fmt.num(p.tax) %></td><td class="num"><%= fmt.num(p.deductions) %></td><% } %>
             <td class="mono small"><%= p.ref || '—' %></td>
-            <td><%- p.rejected ? '<span class="badge danger">Từ chối</span>' : p.confirmed_at ? (p.reconciled ? '<span class="badge success">Đã đối soát</span>' : '<span class="badge brand">Đã xác nhận</span>') : '<span class="badge warn">Chờ M&amp;T xác nhận</span>' %></td>
+            <td><%- badge(L.PAYMENT_STATUS, p.status) %></td>
             <td class="muted nowrap"><%= fmt.date(p.created_at) %></td></tr>
         <% } %></tbody>
       </table></div>
@@ -443,7 +444,8 @@
         <% for (const c of commissions) { %>
           <tr><td class="mono small">#<%= c.payment_id %></td><td><%= c.user_code ? `${c.user_code} · ${c.full_name}` : 'M&T' %><% if (c.reason) { %><div class="small muted"><%= c.reason %></div><% } %></td>
             <td><%= L.ROLES[c.role]?.label || c.role %></td><td class="num"><%= fmt.num(c.base_amount) %></td><td class="num"><%= fmt.pct(c.rate_bp) %></td><td class="num"><%= fmt.pct(c.share_bp) %></td>
-            <td class="num"><strong><%= fmt.vnd(c.amount) %></strong></td><td><%- badge(L.COMMISSION_STATUS, c.status) %></td></tr>
+            <td class="num"><strong><%= fmt.vnd(c.amount) %></strong></td><td><%- badge(L.COMMISSION_STATUS, c.status) %>
+              <% if (c.status === 'PENDING_APPROVAL') { %><div class="small muted"><%= c.objection ? 'Freelancer không đồng ý: ' + c.objection : `Freelancer ${c.user_confirmed_at ? 'đã đồng ý' : 'chưa xác nhận'} · M&T ${c.approved_by ? 'đã duyệt' : 'chưa duyệt'}` %></div><% } %></td></tr>
         <% } %>
       </tbody>
     </table></div>
@@ -533,14 +535,44 @@
   <% if (can.cancel) { %>
     <details class="disclose"><summary>Hủy Order</summary>
       <form method="post" action="<%= base %>/cancel"><%- C %>
-        <%- include('../partials/field', { name: 'reason', label: 'Lý do', required: can.admin }) %>
+        <%- include('../partials/field', { name: 'reason', label: 'Lý do', required: can.cancelNeedsReason }) %>
         <button class="btn btn-danger btn-sm" data-confirm="Hủy Order này?">Hủy Order</button>
       </form></details>
   <% } %>
+  <% if (can.rejectService) { %>
+    <details class="disclose"><summary>M&amp;T từ chối cung cấp dịch vụ</summary>
+      <form method="post" action="/admin/orders/<%= order.id %>/reject-service"><%- C %>
+        <p class="small muted">Order chuyển sang <strong>Từ chối</strong>. Chỉ M&amp;T mở lại được.</p>
+        <%- include('../partials/field', { name: 'reason', label: 'Lý do', required: true }) %>
+        <button class="btn btn-danger btn-sm" data-confirm="Từ chối cung cấp dịch vụ cho Order này?">Từ chối</button>
+      </form></details>
+  <% } %>
+  <div class="card" id="statuses">
+    <h3>Trạng thái</h3>
+    <dl class="kv">
+      <dt>Order</dt><dd><%- badge(L.ORDER_STATUS, S) %></dd>
+      <% if (acc.workspace) { const tc = Object.fromEntries(taskCounts.map((t) => [t.status, t.n])); const total = taskCounts.reduce((a, t) => a + t.n, 0); %>
+        <dt>Nhiệm vụ</dt><dd><% if (!total) { %><span class="small muted">Chưa giao</span><% } else { %><span class="small"><%= tc.DONE || 0 %>/<%= total %> hoàn thành</span>
+          <div class="row" style="gap:4px; margin-top:4px"><% for (const k of Object.keys(L.TASK_STATUS)) { if (tc[k]) { %><%- badge(L.TASK_STATUS, k) %><span class="small"><%= tc[k] %></span><% } } %></div><% } %></dd>
+      <% } %>
+      <% if (can.seeMoney) { %>
+        <dt>Thanh toán</dt><dd><%- badge(L.ORDER_PAYMENT_STATE, payState.key) %><% if (payState.declared) { %><div class="small muted"><%= payState.declared %> khoản chờ M&amp;T xác nhận</div><% } %></dd>
+      <% } %>
+      <% if (can.admin) { %>
+        <dt>Hoa hồng</dt><dd><% if (!commissionCounts.length) { %><span class="small muted">Chưa đối soát</span><% } else { %>
+          <div class="stack" style="gap:4px"><% for (const c of commissionCounts) { %><div class="row" style="gap:6px"><%- badge(L.COMMISSION_STATUS, c.status) %><span class="small"><%= c.n %> dòng · <%= fmt.vnd(c.amount) %></span></div><% } %></div><% } %></dd>
+      <% } %>
+    </dl>
+    <p class="small muted" style="margin:0">Mỗi trường được lưu và ghi lịch sử riêng. <a href="/statuses">Ý nghĩa từng trạng thái</a></p>
+  </div>
   <div class="card">
     <h3>Lịch sử trạng thái</h3>
     <ul class="timeline">
-      <% for (const h of history) { %><li><%- badge(L.ORDER_STATUS, h.to_status) %><% if (h.note) { %><div class="small"><%= h.note %></div><% } %><time><%= h.actor_code || 'Hệ thống' %> · <%= fmt.dateTime(h.created_at) %></time></li><% } %>
+      <% for (const h of history) { const E = L.HISTORY_ENTITY[h.entity]; %><li>
+        <% if (h.entity !== 'order') { %><span class="small muted"><%= E.label %> #<%= h.entity_id %>:</span> <% } %>
+        <% if (h.from_status && h.from_status !== h.to_status) { %><%- badge(E.statuses, h.from_status) %> → <% } %><%- badge(E.statuses, h.to_status) %>
+        <% if (h.reason) { %><div class="small"><%= h.reason %></div><% } %>
+        <time><%= h.actor_code || 'Hệ thống' %><%= h.data_json && JSON.parse(h.data_json).auto ? ' · tự động' : '' %> · <%= fmt.dateTime(h.created_at) %></time></li><% } %>
     </ul>
   </div>
 </aside>

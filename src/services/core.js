@@ -24,6 +24,14 @@ function audit(actorId, action, entity, entityId, { before, after, reason } = {}
   );
 }
 
+/** Ghi một lần đổi trạng thái (order/task/payment/commission/payout) vào status_history — chỉ thêm, không sửa */
+function history(entity, entityId, { orderId = null, from = null, to, actorId = null, reason = null, data } = {}) {
+  db.run(
+    'INSERT INTO status_history (entity, entity_id, order_id, from_status, to_status, actor_id, reason, data_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+    entity, entityId, orderId, from, to, actorId, reason, data === undefined ? null : JSON.stringify(data),
+  );
+}
+
 function notify(userId, title, link) {
   if (userId) db.run('INSERT INTO notifications (user_id, title, link) VALUES (?, ?, ?)', userId, title, link || null);
 }
@@ -36,4 +44,4 @@ function notifyAdmins(title, link) {
   for (const u of db.all("SELECT id FROM users WHERE kind = 'admin' AND status = 'ACTIVE'")) notify(u.id, title, link);
 }
 
-module.exports = { FlowError, fail, nextCode, audit, notify, notifyRole, notifyAdmins };
+module.exports = { FlowError, fail, nextCode, audit, history, notify, notifyRole, notifyAdmins };

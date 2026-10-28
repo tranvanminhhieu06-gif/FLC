@@ -89,6 +89,12 @@ router.post('/register/freelancer', flUpload, (req, res, next) => {
   });
 });
 
+/** Bảng trạng thái: mã cố định, tên hiển thị, ý nghĩa, ai được chuyển sang đâu */
+router.get('/statuses', requireLogin, (req, res) => {
+  const flow = require('../services/orderFlow');
+  res.render('statuses', { title: 'Bảng trạng thái', EDGES: flow.EDGES, ACTORS: flow.ACTORS });
+});
+
 router.get('/notifications', requireLogin, (req, res) => {
   const items = db.all('SELECT * FROM notifications WHERE user_id = ? ORDER BY id DESC LIMIT 100', req.user.id);
   res.render('notifications', { title: 'Thông báo', items });

@@ -31,7 +31,7 @@ function forUser(userId) {
     );
     const ledger = db.get(
       `SELECT COALESCE(SUM(CASE WHEN status = 'PENDING_APPROVAL' THEN amount END), 0) AS pending,
-              COALESCE(SUM(CASE WHEN status = 'APPROVED' THEN amount END), 0) AS approved,
+              COALESCE(SUM(CASE WHEN status IN ('APPROVED', 'PAYABLE') THEN amount END), 0) AS approved,
               COALESCE(SUM(CASE WHEN status = 'PAID' THEN amount END), 0) AS paid,
               COUNT(*) AS lines
          FROM commissions WHERE order_id = ? AND user_id = ? AND status <> 'VOID'`, orderId, userId,

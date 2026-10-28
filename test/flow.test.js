@@ -122,8 +122,14 @@ test('trọn quy trình: file gốc khóa tới khi trả đủ; hoa hồng ch�
   orders.signOff(id, cus);
   commission.reconcile({ orderId: id, adminId });
   assert.throws(() => commission.reconcile({ orderId: id, adminId }), /Không có khoản thu mới/);
-  assert.throws(() => flow.transition(id, 'COMPLETED', adminId), /chờ duyệt/);
-  commission.approve({ ids: db.all("SELECT id FROM commissions WHERE order_id = ? AND status = 'PENDING_APPROVAL'", id).map((r) => r.id), adminId });
+  assert.throws(() => flow.transition(id, 'COMPLETED', adminId), /chờ freelancer và M&T duyệt/);
+  const pending = db.all("SELECT id, user_id FROM commissions WHERE order_id = ? AND status = 'PENDING_APPROVAL'", id);
+  commission.approve({ ids: pending.map((r) => r.id), adminId });
+  assert.equal(db.get("SELECT COUNT(*) AS n FROM commissions WHERE order_id = ? AND status = 'APPROVED'", id).n, 0, 'M&T duyệt một mình chưa đủ');
+  for (const uid of new Set(pending.map((r) => r.user_id))) {
+    commission.confirmByUser({ ids: pending.filter((r) => r.user_id === uid).map((r) => r.id), userId: uid });
+  }
+  assert.equal(db.get("SELECT COUNT(*) AS n FROM commissions WHERE order_id = ? AND status = 'PENDING_APPROVAL'", id).n, 0);
   flow.transition(id, 'COMPLETED', adminId);
   const total = db.get('SELECT SUM(amount) AS s FROM commissions WHERE order_id = ?', id).s;
   assert.equal(total, 20_000_000);
@@ -175,4 +181,89 @@ test('freelancer không xem được Order không liên quan', () => {
   other.roles = ['PM'];
   const id = db.get("SELECT id FROM orders WHERE status = 'COMPLETED' LIMIT 1").id;
   assert.equal(access.forOrder(other, id).any, false);
+});
+
+test('quyền chuyển trạng thái theo từng bên', () => {
+  const id = newOrder();
+  orders.submitOrder(id, cus);
+  assert.throws(() => flow.transition(id, 'CONSULTING', cus), /không có quyền/, 'khách không tự chuyển sang Tư vấn');
+  assert.throws(() => flow.transition(id, 'CONSULTING', prj.id), /không có quyền/, 'người không giữ vai trò Sales trong Order');
+  assignment.claimIntake(id, sales.id);
+  orders.createQuote(id, sales, { amount: 4_000_000, deposit_pct: 50, scope: 'S' });
+  assert.throws(() => flow.transition(id, 'CONTRACT_SIGNED', sales.id), /không có quyền/, 'Sales không ký thay khách');
+  orders.acceptQuote(db.get("SELECT id FROM quotes WHERE order_id = ? AND status = 'SENT'", id).id, cus, true);
+  assert.equal(status(id), 'AWAITING_DEPOSIT');
+  assert.throws(() => flow.transition(id, 'DEPOSITED', cus), /không có quyền/, 'khách không tự đánh dấu đã cọc');
+  assert.throws(() => flow.transition(id, 'CANCELLED', sales.id), /không có quyền/);
+});
+
+test('M&T từ chối cung cấp dịch vụ: cần lý do, chỉ M&T mở lại', () => {
+  const id = newOrder();
+  orders.submitOrder(id, cus);
+  assignment.claimIntake(id, sales.id);
+  assert.throws(() => orders.rejectService(id, sales.id, 'x'), /không có quyền/);
+  assert.throws(() => orders.rejectService(id, adminId, ''), /lý do/);
+  orders.rejectService(id, adminId, 'Ngoài năng lực đội ngũ');
+  assert.equal(status(id), 'REJECTED');
+  assert.throws(() => orders.createQuote(id, sales, { amount: 1_000_000, scope: 'S' }), /chỉ M&T mở lại/);
+  assert.equal(status(id), 'REJECTED');
+  assert.equal(db.get('SELECT COUNT(*) AS n FROM quotes WHERE order_id = ?', id).n, 0, 'báo giá bị hủy theo transaction');
+  flow.transition(id, 'CONSULTING', adminId, 'M&T mở lại sau khi bổ sung nhân sự');
+  assert.equal(status(id), 'CONSULTING');
+});
+
+test('hoa hồng: hai bên đồng ý mới duyệt; phản đối chặn duyệt; tranh chấp mở chặn đưa vào kỳ', () => {
+  const id = toDeposit(10_000_000);
+  const dep = finance.declarePayment({ orderId: id, actorId: cus, kind: 'deposit', amount: 5_000_000, ref: 'hh' });
+  finance.confirmPayment({ paymentId: dep, adminId });
+  assignment.startMatching(id, acc);
+  assignment.setNeedsPm(id, acc, false);
+  assignment.respond(assignment.invite(id, acc, prj.id, 'PROJECT'), prj.id, true);
+  assignment.submitPlan(id, acc);
+  assignment.approvePlan(id, adminId, DEFAULT_RATES);
+  commission.reconcile({ orderId: id, adminId });
+  assert.equal(db.get('SELECT status FROM payments WHERE id = ?', dep).status, 'RECONCILED');
+
+  const line = db.get('SELECT * FROM commissions WHERE order_id = ? AND user_id = ?', id, prj.id);
+  const st = () => db.get('SELECT status FROM commissions WHERE id = ?', line.id).status;
+  assert.throws(() => commission.objectByUser({ id: line.id, userId: acc.id, reason: 'x' }), /Không tìm thấy/, 'không phản đối dòng của người khác');
+  commission.objectByUser({ id: line.id, userId: prj.id, reason: 'Sai tỷ lệ phân công' });
+  assert.equal(commission.approve({ ids: [line.id], adminId }), 0, 'dòng đang bị phản đối chưa duyệt được');
+  commission.dismissObjection({ id: line.id, adminId, reason: 'Đúng theo phương án đã khóa' });
+  commission.approve({ ids: [line.id], adminId });
+  assert.equal(st(), 'PENDING_APPROVAL', 'còn chờ freelancer xác nhận lại');
+  commission.confirmByUser({ ids: [line.id], userId: prj.id });
+  assert.equal(st(), 'APPROVED');
+
+  orders.raiseDispute(id, cus, { kind: 'complaint', title: 'Chậm tiến độ', body: 'Chưa thấy cập nhật' });
+  assert.throws(() => commission.schedulePayout({ userId: prj.id, adminId, period: '2026-13' }), /YYYY-MM/);
+  // prj còn dòng đã duyệt của Order ở bài kiểm thử trọn quy trình → kỳ này chỉ gom các dòng đó
+  const other = commission.schedulePayout({ userId: prj.id, adminId, period: '2026-10' });
+  assert.equal(db.get('SELECT COUNT(*) AS n FROM commissions WHERE payout_id = ? AND order_id = ?', other, id).n, 0);
+  assert.equal(st(), 'APPROVED', 'Order còn tranh chấp mở → chưa vào kỳ');
+  orders.resolveDispute(db.get("SELECT id FROM disputes WHERE order_id = ? AND status = 'OPEN'", id).id, adminId, { resolution: 'Đã cập nhật tiến độ' });
+  const payoutId = commission.schedulePayout({ userId: prj.id, adminId, period: '2026-10' });
+  assert.equal(st(), 'PAYABLE');
+  assert.throws(() => commission.markPaid({ payoutId, adminId, ref: '' }), /mã giao dịch/);
+  commission.markPaid({ payoutId, adminId, ref: 'CHI-T1' });
+  assert.equal(st(), 'PAID');
+  assert.throws(() => db.run('UPDATE commissions SET amount = 1 WHERE id = ?', line.id), /đã chốt/);
+  const trail = db.all("SELECT to_status FROM status_history WHERE entity = 'commission' AND entity_id = ? ORDER BY id", line.id).map((h) => h.to_status);
+  assert.deepEqual([...new Set(trail)], ['PENDING_APPROVAL', 'APPROVED', 'PAYABLE', 'PAID']);
+
+  // Nhiệm vụ cũng có lịch sử riêng
+  const t = orders.createTask(id, acc, { title: 'Thiết kế', assignee_id: prj.id });
+  orders.setTaskStatus(t, prj, 'DOING');
+  const th = db.all("SELECT from_status, to_status, actor_id FROM status_history WHERE entity = 'task' AND entity_id = ? ORDER BY id", t);
+  assert.deepEqual(th.map((h) => [h.from_status, h.to_status]), [[null, 'TODO'], ['TODO', 'DOING']]);
+  assert.equal(th[1].actor_id, prj.id);
+});
+
+test('lịch sử trạng thái: đánh dấu bước tự động, chỉ thêm không sửa', () => {
+  const auto = db.get("SELECT data_json FROM status_history WHERE entity = 'order' AND to_status = 'AWAITING_DEPOSIT' LIMIT 1");
+  assert.equal(JSON.parse(auto.data_json).auto, true);
+  const entities = db.all('SELECT DISTINCT entity FROM status_history').map((r) => r.entity).sort();
+  assert.deepEqual(entities, ['commission', 'order', 'payment', 'payout', 'task']);
+  assert.throws(() => db.run("UPDATE status_history SET reason = 'sửa'"), /chỉ cho phép thêm/);
+  assert.throws(() => db.run('DELETE FROM status_history'), /chỉ cho phép thêm/);
 });

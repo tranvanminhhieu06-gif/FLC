@@ -40,8 +40,8 @@ Dữ liệu demo có sẵn các Order ở các giai đoạn khác nhau:
 
 | Order | Trạng thái | Đặc điểm |
 |---|---|---|
-| ORD1 | Đã đóng | Đi trọn quy trình: có Referrer, có PM, 2 Project chia 60/40, đã chi trả một phần |
-| ORD2 | Đang kiểm duyệt | Không có Referrer, không có PM (Account kiêm PM), đã đối soát đợt cọc |
+| ORD1 | Đã đóng | Đi trọn quy trình: có Referrer, có PM, 2 Project chia 60/40. Project 1 đã được chi trả, PM ở trạng thái Chờ thanh toán (đã vào kỳ) |
+| ORD2 | Đang kiểm duyệt | Không có Referrer, không có PM (Account kiêm PM). Đã đối soát đợt cọc: Account đã đồng ý số tiền, các dòng khác chờ freelancer xác nhận và M&T duyệt |
 | ORD3 | Báo giá | Chờ khách xác nhận |
 | ORD4 | Chờ tiếp nhận | Chờ Sales nhận |
 | ORD5 | Bản nháp | |
@@ -55,7 +55,8 @@ Dữ liệu demo có sẵn các Order ở các giai đoạn khác nhau:
 | `npm start` | Chạy server (cổng `PORT`, mặc định 3000) |
 | `npm run dev` | Chạy và tự khởi động lại khi sửa code (`node --watch`) |
 | `npm run seed -- --reset` | Xóa CSDL và tệp đã tải lên, rồi tạo lại dữ liệu demo |
-| `npm test` | 19 bài kiểm thử: thuật toán hoa hồng, doanh thu thuần, bảng tỷ lệ và các quy tắc hệ thống |
+| `FLC_NEW_PASSWORD='…' node scripts/create-user.js --kind admin\|freelancer\|customer --email … --name "…" [--member … --roles PROJECT --dev]` | Tạo tài khoản đã duyệt sẵn. Mật khẩu lấy từ biến môi trường, không ghi vào mã nguồn. `--dev` đặt người đó nhận phần Coder web |
+| `npm test` | 23 bài kiểm thử: thuật toán hoa hồng, doanh thu thuần, bảng tỷ lệ, quyền chuyển trạng thái và các quy tắc hệ thống |
 
 ## Cấu trúc
 
@@ -66,11 +67,11 @@ src/
   db/schema.sql        Toàn bộ bảng + trigger khóa dữ liệu tài chính và nhật ký
   db/index.js          node:sqlite, tx() (transaction BEGIN IMMEDIATE)
   services/            ★ Toàn bộ quy tắc nghiệp vụ nằm ở đây — route chỉ gọi service
-    orderFlow.js       Máy trạng thái 20 trạng thái + điều kiện chuyển bước
+    orderFlow.js       Máy trạng thái 20 trạng thái: ai được chuyển từ đâu sang đâu + điều kiện chuyển bước
     assignment.js      Tiếp nhận, mời, nhận/từ chối, duyệt & khóa phân công
     orders.js          Order, báo giá, hợp đồng, nhiệm vụ, bàn giao, nghiệm thu
     finance.js         Khai báo / xác nhận thực thu, hoàn tiền, tự chuyển bước theo tiền
-    commission.js      Đối soát, duyệt, chi trả, tỷ lệ, người nhận Coder web
+    commission.js      Đối soát, hai bên duyệt hoa hồng, kỳ thanh toán, chi trả, tỷ lệ, người nhận Coder web
     revenue.js         Doanh thu & thu nhập theo từng dự án của freelancer
     access.js          Ai được xem Order nào, phần nào
     files.js           Upload vào storage/private + quyền tải (file gốc / demo / CCCD)
@@ -92,6 +93,13 @@ test/                  node:test
 | Chưa đạt điều kiện đặt cọc thì không được triển khai (trừ khi M&T duyệt ngoại lệ, có lý do) | `orderFlow.guard('DEPOSITED' / 'MATCHING')`, `orders.depositException` |
 | Chưa thanh toán đủ thì không được tải file gốc | `files.resolve('deliverable')` kiểm tra `finance.summary().paidInFull` |
 | Demo/preview chỉ xem trực tiếp, không cache | `routes/files.js` gửi header `inline` + `no-store` |
+| Bốn trường trạng thái độc lập, mã tiếng Anh trong CSDL, tên tiếng Việt khi hiển thị | `orders/tasks/payments/commissions.status`; nhãn, `STT1`–`STT24` và ý nghĩa ở `lib/labels.js`; trang tra cứu `/statuses` |
+| Lưu lịch sử mọi lần đổi trạng thái (cũ, mới, ai, lúc nào, lý do, dữ liệu) | Bảng `status_history` + trigger `history_no_update`, `history_no_delete` |
+| Kiểm tra quyền chuyển trạng thái theo từng bên | `orderFlow.EDGES` (từng cặp "từ → đến" kèm danh sách bên được phép) |
+| Chỉ hoàn tất Order khi xong nghĩa vụ | `guard('COMPLETED')`: không còn khoản thu chờ xác nhận hoặc chưa đối soát, hoa hồng chờ duyệt, tranh chấp mở |
+| Hoa hồng chỉ "Đã duyệt" khi freelancer và M&T cùng đồng ý | `commission.confirmByUser` + `commission.approve`; freelancer không đồng ý (`objectByUser`) thì chặn duyệt |
+| Chờ thanh toán → Đã thanh toán theo kỳ | `commission.schedulePayout` (bỏ qua Order còn tranh chấp mở) → `commission.markPaid` |
+| M&T từ chối cung cấp dịch vụ | `orders.rejectService` (bắt buộc lý do; chỉ M&T mở lại) |
 | Order hoàn tất không tự chia doanh thu | Hoa hồng chỉ được tạo khi Admin bấm *Đối soát* (`commission.reconcile`) |
 | Không có Referrer thì phần 5% về M&T | `computeLines`, dòng `beneficiary = 'MT'` |
 | Một người nhiều vai trò: cộng từng vai trò, không ghi trùng | Ràng buộc `UNIQUE(payment_id, beneficiary, role)` |
@@ -99,7 +107,7 @@ test/                  node:test
 | Hoa hồng tính theo từng đợt thu | Mỗi `payment` được đối soát riêng |
 | Tỷ lệ lưu theo Order, chính sách mới không ảnh hưởng Order đã chốt | `revenue_allocations` chụp tỷ lệ lúc M&T khóa phương án |
 | Không sửa dữ liệu tài chính đã chốt | Trigger `payments_locked`, `commissions_locked`, `commissions_no_delete` |
-| Nhật ký bất biến | Trigger `audit_no_update`, `audit_no_delete` |
+| Nhật ký và lịch sử bất biến | Trigger `audit_no_update`, `audit_no_delete`, `history_no_update`, `history_no_delete` |
 | Freelancer không tự sửa tỷ lệ | Chỉ route `/admin/*` (yêu cầu `kind = admin`) mới ghi tỷ lệ |
 | Không để hai người cùng nhận một vị trí độc quyền | `assignment.respond` + transaction `BEGIN IMMEDIATE` |
 | Order phải có người phụ trách chính và người dự phòng | Account là phụ trách chính. M&T là dự phòng mặc định và có thể thu hồi hoặc thay người |
@@ -121,7 +129,7 @@ test/                  node:test
 
 1. Đặt biến môi trường: `NODE_ENV=production`, `SESSION_SECRET` (chuỗi ngẫu nhiên dài), `PORT`. Tùy chọn thêm `FLC_DB` (đường dẫn tệp CSDL) và `FLC_STORAGE` (thư mục lưu tệp).
 2. Chạy sau một reverse proxy có HTTPS (Nginx hoặc Caddy). App đã bật `trust proxy`.
-3. Tạo tài khoản Admin đầu tiên. Hiện có thể chạy seed rồi xóa dữ liệu demo; nên viết script `create-admin` riêng.
+3. Tạo tài khoản Admin đầu tiên bằng `scripts/create-user.js --kind admin` (không chạy seed trên production).
 4. Sao lưu định kỳ hai thư mục `data/` và `storage/private/`.
 5. Khi tải lớn hơn: chuyển sang PostgreSQL (schema đã viết theo chuẩn, xem ghi chú đầu `schema.sql` và `reports.js`), chuyển tệp sang S3/R2. Chi tiết ở [docs/SYSTEM_DESIGN.md §7](docs/SYSTEM_DESIGN.md).
 

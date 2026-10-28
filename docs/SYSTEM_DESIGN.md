@@ -129,10 +129,28 @@ DRAFT ──gửi──▶ PENDING_INTAKE ──Sales nhận──▶ CONSULTING
 | `DEPOSITED → MATCHING` | Khách hàng đã được xác minh |
 | `PENDING_MATCH_APPROVAL → IN_PROGRESS` | Có đủ Account, ít nhất một Project, có người phụ trách chính và người dự phòng (hoặc Admin là dự phòng mặc định). Tổng phần chia trong mỗi vai trò bằng 100%. |
 | `AWAITING_PAYMENT → ACCEPTANCE` | Thực thu ròng ≥ giá trị hợp đồng (đã trừ hoàn tiền) |
-| `RECONCILIATION → COMPLETED` | Mọi dòng hoa hồng đã ở trạng thái `APPROVED` hoặc `VOID` |
-| Bất kỳ → `CANCELLED` | Chỉ trước `IN_PROGRESS`, hoặc Admin hủy kèm lý do (sau đó xử lý hoàn tiền) |
+| `RECONCILIATION → COMPLETED` | Không còn khoản thu `DECLARED`/`CONFIRMED` (chưa xác nhận hoặc chưa đối soát), không còn hoa hồng `PENDING_APPROVAL`, không còn tranh chấp `OPEN` |
+| `PENDING_INTAKE`/`CONSULTING`/`QUOTED → REJECTED` | Khách từ chối báo giá, hoặc M&T từ chối cung cấp dịch vụ (bắt buộc lý do). Nếu M&T từ chối thì chỉ M&T mở lại được. |
+| Bất kỳ → `CANCELLED` | Khách tự hủy được tới bước Chờ cọc. Từ `DEPOSITED` trở đi là thỏa thuận chấm dứt: chỉ M&T thực hiện, bắt buộc lý do (sau đó xử lý hoàn tiền) |
 
-Mỗi lần chuyển trạng thái sẽ ghi `order_status_history` cùng `audit_logs` (ai, lúc nào, từ trạng thái nào sang trạng thái nào, lý do).
+**Quyền chuyển trạng thái** khai báo theo từng cặp "từ → đến" trong `orderFlow.EDGES`, ví dụ `QUOTED → CONTRACT_SIGNED: [CUSTOMER]`. `transition()` kiểm tra theo thứ tự: có cạnh chuyển không → người thao tác có giữ một trong các vai trò được phép trong Order không → điều kiện nghiệp vụ (guard). Bước tự động (đủ cọc → Đã cọc, trả đủ → Nghiệm thu, ký HĐ → Chờ cọc) gọi với `{ auto: true }` và phải có `SYSTEM` trong danh sách quyền. Bảng đầy đủ hiển thị ở trang `/statuses`.
+
+**Bốn trường trạng thái độc lập:** `orders.status` (order_status), `tasks.status` (task_status), `payments.status` (payment_status), `commissions.status` (commission_status). Trạng thái nhiệm vụ, khoản thu và hoa hồng gắn với từng bản ghi. Tình trạng thanh toán của cả Order (chưa đủ cọc / đã cọc / đã trả đủ) được **suy ra** từ các khoản thu (`finance.orderPaymentState`), không lưu riêng để tránh lệch dữ liệu.
+
+**Lịch sử:** mọi lần đổi trạng thái của 4 trường (và kỳ chi trả) đều ghi vào `status_history`: trạng thái cũ, mới, người thao tác, thời điểm, lý do và `data_json` (dữ liệu liên quan, có cờ `auto` cho bước tự động). Trigger chặn UPDATE/DELETE. Thao tác vẫn ghi thêm `audit_logs`.
+
+**Mã trạng thái:** CSDL lưu mã tiếng Anh cố định (`DRAFT`, `PENDING_APPROVAL`…). Số thứ tự hiển thị (`STT1`–`STT24`), tên và ý nghĩa tiếng Việt nằm ở `src/lib/labels.js`, nên đổi cách hiển thị hay thêm ngôn ngữ không ảnh hưởng dữ liệu.
+
+**Trạng thái hoa hồng:**
+
+```
+PENDING_APPROVAL ──freelancer đồng ý + M&T duyệt──▶ APPROVED ──M&T đưa vào kỳ (Order không có tranh chấp mở)──▶ PAYABLE ──đã chuyển khoản──▶ PAID
+      │  freelancer không đồng ý → chặn duyệt; M&T giữ nguyên (kèm giải thích, freelancer xác nhận lại) hoặc
+      └──────────────────────────────────────────────────────────────────────────────▶ VOID (kèm lý do, không xóa dòng)
+RETAINED: phần M&T và phần vai trò không có người nhận
+```
+
+**Trạng thái khoản thu:** `DECLARED` (khách báo chuyển) → `CONFIRMED` (M&T xác nhận, khóa số tiền) → `RECONCILED` (đã tính hoa hồng); hoặc `DECLARED → REJECTED`. Hoàn tiền là dòng âm mới ở trạng thái `CONFIRMED`.
 
 **Trạng thái tài khoản:** `PENDING` → `ACTIVE` | `NEEDS_INFO` | `REJECTED` | `SUSPENDED`.
 
@@ -149,7 +167,7 @@ Tiền lưu bằng `INTEGER` (đơn vị VND). Tỷ lệ lưu bằng `INTEGER` t
 | `customer_profiles` | user_id, company, tax_code, address, referrer_code | Mã người giới thiệu nhập lúc đăng ký |
 | `freelancer_profiles` | user_id, dob, member_code (UNIQUE), skills, experience, portfolio, bank_name, bank_account, cv_file, id_front_file, id_back_file, availability | Thông tin ngân hàng và CCCD chỉ Admin xem |
 | `orders` | id, code, customer_id, referrer_id, title, service_type, description, deliverables, budget, deadline, invoice_info, status, needs_pm, deposit_exception | `invoice_info` không bao giờ hiển thị cho freelancer |
-| `order_status_history` | order_id, from_status, to_status, actor_id, note | |
+| `status_history` | entity (`order`/`task`/`payment`/`commission`/`payout`), entity_id, order_id, from_status, to_status, actor_id, reason, data_json | Chỉ thêm mới (trigger chặn sửa/xóa) |
 | `order_assignments` | order_id, user_id, role, share_bp, is_primary, is_backup, status (`INVITED`/`ACCEPTED`/`DECLINED`/`EXPIRED`/`LOCKED`/`REVOKED`) | UNIQUE(order_id, user_id, role) |
 | `quotes` | order_id, version, amount, scope, timeline, status, created_by, confirmed_at | UNIQUE(order_id, version) |
 | `contracts` | order_id, quote_id, value, deposit_pct, deposit_amount, terms, signed_at | |
@@ -158,11 +176,11 @@ Tiền lưu bằng `INTEGER` (đơn vị VND). Tỷ lệ lưu bằng `INTEGER` t
 | `deliverables` | order_id, task_id, version, kind (`demo`/`preview`/`final`), file, submitted_by, review_status, reviewed_by | Tệp `final` chỉ tải được sau khi khách thanh toán đủ |
 | `acceptances` | order_id, deliverable_id, decision, note, actor_id, created_at | Biên bản nghiệm thu |
 | `messages` | order_id, user_id, body, file | Lịch sử trao đổi |
-| `payments` | order_id, kind (`deposit`/`installment`/`refund`), amount, tax, deductions, confirmed_by, confirmed_at, reconciled | Hoàn tiền ghi thành **dòng âm riêng**, không sửa dòng cũ |
+| `payments` | order_id, kind (`deposit`/`installment`/`refund`), amount, tax, deductions, confirmed_by, confirmed_at, status (`DECLARED`/`CONFIRMED`/`REJECTED`/`RECONCILED`) | Hoàn tiền ghi thành **dòng âm riêng**, không sửa dòng cũ |
 | `rate_policies` | id, name, rates_json, active_from | Chính sách tỷ lệ |
 | `revenue_allocations` | order_id, role, rate_bp, locked_at | **Bản chụp tỷ lệ** của Order lúc khóa phân công. Chính sách mới không ảnh hưởng Order đã khóa. |
-| `commissions` | order_id, payment_id, user_id (NULL = M&T), role, base_amount, rate_bp, share_bp, amount, status (`PENDING_APPROVAL`/`APPROVED`/`VOID`/`PAID`), reason, payout_id | **UNIQUE(payment_id, user_id, role)** để chống tính trùng |
-| `payouts` | user_id, amount, status, paid_at, ref | Một lần chi gom nhiều dòng hoa hồng |
+| `commissions` | order_id, payment_id, user_id (NULL = M&T), role, base_amount, rate_bp, share_bp, amount, status (`PENDING_APPROVAL`/`APPROVED`/`PAYABLE`/`PAID`/`VOID`/`RETAINED`), user_confirmed_at, objection, approved_by, reason, payout_id | **UNIQUE(payment_id, user_id, role)** để chống tính trùng |
+| `payouts` | user_id, amount, period (`YYYY-MM`), status (`SCHEDULED`/`PAID`), ref, paid_by, paid_at | Một kỳ thanh toán gom nhiều dòng hoa hồng đã duyệt |
 | `disputes` | order_id, raised_by, kind (`complaint`/`refund`/`change_request`), body, evidence_file, status, resolution | |
 | `notifications` | user_id, title, link, read_at | |
 | `audit_logs` | actor_id, action, entity, entity_id, before_json, after_json, reason, created_at | Chỉ được INSERT. Không có route nào sửa hay xóa. |
@@ -183,7 +201,7 @@ for each role in revenue_allocations(order):
     if role = PM and order.needs_pm = 0   → cộng pool vào role ACCOUNT, reason = "Account kiêm PM"
     else chia pool theo share_bp của từng holder (dòng cuối nhận phần dư làm tròn)
     INSERT commissions(...)  — UNIQUE(payment_id, user_id, role) chặn ghi trùng
-mark payment.reconciled = 1
+payment.status = 'RECONCILED'
 ```
 
 - **Một người nhiều vai trò:** mỗi vai trò là một dòng riêng, rồi cộng lại khi chi trả. Ràng buộc UNIQUE ngăn cùng một người nhận hai lần cho cùng vai trò trong cùng đợt thu.
@@ -213,7 +231,9 @@ mark payment.reconciled = 1
 | Nghiệm thu | ✔ | | | | | | |
 | Tải tệp gốc | ✔ khi đã trả đủ | | | ✔ | ✔ | ✔ (tệp của mình) | ✔ |
 | Xem thông tin hóa đơn, CCCD, STK | | | | | | | ✔ |
-| Đối soát, duyệt hoa hồng, chi trả | | | | | | | ✔ |
+| Xác nhận / không đồng ý hoa hồng của mình | | ✔ | ✔ | ✔ | ✔ | ✔ | |
+| Đối soát, duyệt hoa hồng, đưa vào kỳ, chi trả | | | | | | | ✔ |
+| Từ chối cung cấp dịch vụ | | | | | | | ✔ |
 
 Freelancer chỉ đọc được Order có `order_assignments.status ∈ {ACCEPTED, LOCKED}` (hoặc `INVITED` ở dạng tóm tắt). Khi bị `REVOKED` hoặc Order `CLOSED`, quyền truy cập workspace bị thu hồi (chỉ xem lịch sử thu nhập).
 

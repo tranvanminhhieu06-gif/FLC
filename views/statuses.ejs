@@ -1,0 +1,62 @@
+<%- include('partials/app-start') %>
+<%
+  const stepName = (n) => L.STEPS.find((s) => s.n === n)?.name || '';
+  const actorText = (list) => list.map((a) => ACTORS[a]).join(', ');
+  const simple = [
+    { id: 'commission', short: 'Hoa hồng', title: 'Trạng thái hoa hồng', field: 'commission_status', map: L.COMMISSION_STATUS, note: 'Gắn với từng dòng hoa hồng (một khoản thu × một người nhận × một vai trò), không chỉ ở cấp Order.' },
+    { id: 'payment', short: 'Khoản thu', title: 'Trạng thái khoản thu', field: 'payment_status', map: L.PAYMENT_STATUS, note: 'Gắn với từng khoản thu. Tình trạng thanh toán của cả Order (chưa đủ cọc, đã thanh toán đủ…) được tính từ các khoản này.' },
+    { id: 'task', short: 'Nhiệm vụ', title: 'Trạng thái nhiệm vụ', field: 'task_status', map: L.TASK_STATUS, note: 'Gắn với từng nhiệm vụ trong nhóm dự án.' },
+  ];
+%>
+<div class="page-head">
+  <div><h1>Bảng trạng thái</h1>
+    <p class="muted">Cơ sở dữ liệu lưu mã cố định bằng tiếng Anh, giao diện hiển thị tên tiếng Việt. Bốn trường trạng thái được tách độc lập: <span class="mono">order_status</span>, <span class="mono">task_status</span>, <span class="mono">payment_status</span>, <span class="mono">commission_status</span>.</p></div>
+</div>
+
+<nav class="row" aria-label="Mục trong trang" style="margin-bottom: var(--sp-5)">
+  <a class="tag" href="#order">Đơn hàng</a><% for (const g of simple) { %><a class="tag" href="#<%= g.id %>"><%= g.short %></a><% } %><a class="tag" href="#rules">Quy tắc</a>
+</nav>
+
+<section class="card flush" id="order" style="margin-bottom: var(--sp-6)">
+  <div class="card-head"><h2>Trạng thái đơn hàng</h2><span class="mono small muted">order_status</span></div>
+  <div class="table-wrap"><table class="table">
+    <thead><tr><th>STT</th><th>Mã</th><th>Tên hiển thị</th><th style="min-width:260px">Ý nghĩa</th><th>Bước</th><th style="min-width:300px">Chuyển tiếp được sang · ai thực hiện</th></tr></thead>
+    <tbody><% for (const [key, s] of Object.entries(L.ORDER_STATUS)) { const next = Object.entries(EDGES[key] || {}); %>
+      <tr>
+        <td class="mono"><%= s.code %></td>
+        <td class="mono small"><%= key %></td>
+        <td><%- badge(L.ORDER_STATUS, key) %></td>
+        <td class="small"><%= s.desc %></td>
+        <td class="small nowrap"><%= s.step %>. <%= stepName(s.step) %></td>
+        <td class="small"><% if (!next.length) { %><span class="muted">Trạng thái cuối</span><% } else { %>
+          <ul style="margin:0; padding-left:16px"><% for (const [to, who] of next) { %><li><strong><%= L.ORDER_STATUS[to].label %></strong> — <%= actorText(who) %></li><% } %></ul><% } %></td>
+      </tr>
+    <% } %></tbody>
+  </table></div>
+  <p class="small muted" style="padding: 0 var(--sp-5) var(--sp-4)"><strong>Hệ thống</strong> nghĩa là bước tự chuyển khi đủ điều kiện, ví dụ M&amp;T xác nhận đủ tiền cọc thì Order sang <em>Đã cọc</em>. Ngoài quyền, mỗi bước còn có điều kiện riêng, ví dụ chưa thanh toán đủ thì không sang được <em>Nghiệm thu</em>.</p>
+</section>
+
+<% for (const g of simple) { %>
+<section class="card flush" id="<%= g.id %>" style="margin-bottom: var(--sp-6)">
+  <div class="card-head"><h2><%= g.title %></h2><span class="mono small muted"><%= g.field %></span></div>
+  <div class="table-wrap"><table class="table">
+    <thead><tr><th>STT</th><th>Mã</th><th>Tên hiển thị</th><th>Ý nghĩa</th></tr></thead>
+    <tbody><% for (const [key, s] of Object.entries(g.map)) { %>
+      <tr><td class="mono"><%= s.code || '—' %></td><td class="mono small"><%= key %></td><td><%- badge(g.map, key) %></td><td class="small"><%= s.desc %></td></tr>
+    <% } %></tbody>
+  </table></div>
+  <p class="small muted" style="padding: 0 var(--sp-5) var(--sp-4)"><%= g.note %></p>
+</section>
+<% } %>
+
+<section class="card" id="rules">
+  <h2>Quy tắc kỹ thuật đang áp dụng</h2>
+  <ul class="stack" style="padding-left: 18px; gap: var(--sp-2)">
+    <li><strong>Lịch sử thay đổi:</strong> mỗi lần đổi trạng thái (Order, nhiệm vụ, khoản thu, hoa hồng, kỳ chi trả) đều lưu trạng thái cũ, trạng thái mới, người thao tác, thời điểm, lý do và dữ liệu liên quan. Bảng lịch sử chỉ cho thêm mới, không cho sửa hay xóa.</li>
+    <li><strong>Quyền chuyển trạng thái:</strong> mỗi cặp "từ → đến" quy định rõ ai được thực hiện (bảng phía trên). Khách hàng, freelancer theo từng vai trò và M&amp;T có quyền khác nhau.</li>
+    <li><strong>Điều kiện tự động:</strong> file gốc chỉ mở khi hệ thống xác nhận khách đã thanh toán đủ. Order chỉ được <em>Hoàn tất</em> khi không còn khoản thu chờ xác nhận hoặc chưa đối soát, không còn hoa hồng chờ duyệt và không còn tranh chấp mở.</li>
+    <li><strong>Hoa hồng hai bên duyệt:</strong> dòng chỉ sang <em>Đã duyệt</em> khi cả freelancer và M&amp;T đồng ý. Nếu freelancer không đồng ý, dòng bị giữ lại để M&amp;T xử lý. Dòng thuộc Order còn tranh chấp chưa được đưa vào kỳ thanh toán.</li>
+    <li><strong>Không xóa lịch sử tài chính:</strong> hoàn tiền là một khoản âm mới. Khoản thu đã xác nhận và hoa hồng đã duyệt bị khóa số tiền. Hủy hoa hồng chỉ đổi trạng thái và ghi lý do, không xóa dòng.</li>
+  </ul>
+</section>
+<%- include('partials/app-end') %>

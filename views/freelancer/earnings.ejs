@@ -1,29 +1,51 @@
 <%- include('../partials/app-start') %>
+<% const C = `<input type="hidden" name="_csrf" value="${csrf()}">`;
+   const waiting = lines.filter((c) => c.status === 'PENDING_APPROVAL' && !c.user_confirmed_at && !c.objection); %>
 <div class="page-head">
-  <div><h1>Sổ hoa hồng</h1><p class="muted">Các khoản <strong>thực sự được ghi sổ</strong> sau khi M&amp;T đối soát: chờ duyệt → đã duyệt → đã chi trả.</p></div>
+  <div><h1>Sổ hoa hồng</h1><p class="muted">Các khoản <strong>thực sự được ghi sổ</strong> sau khi M&amp;T đối soát: chờ duyệt → đã duyệt → chờ thanh toán → đã thanh toán. <a href="/statuses#commission">Xem ý nghĩa từng trạng thái</a>.</p></div>
   <a class="btn btn-secondary" href="/fl/revenue"><%- icon('chart') %>Xem doanh thu dự kiến theo dự án</a>
 </div>
+
+<% if (waiting.length) { %>
+<div class="alert info" style="margin-bottom: var(--sp-6)"><%- icon('alert') %><div>
+  <strong><%= waiting.length %> dòng chờ bạn xác nhận.</strong> Một khoản chỉ sang "Đã duyệt" khi <em>cả bạn và M&amp;T</em> đồng ý.
+  Nếu số tiền chưa đúng, bấm "Không đồng ý" và ghi lý do — dòng sẽ được giữ lại để M&amp;T xử lý.
+</div></div>
+<% } %>
 
 <div class="card flush" style="margin-bottom: var(--sp-6)">
   <div class="card-head"><h2>Sổ hoa hồng</h2></div>
   <% if (!lines.length) { %><div class="empty"><p>Chưa có dòng hoa hồng. Hoa hồng chỉ phát sinh khi M&amp;T đối soát khoản thu thực tế.</p></div><% } else { %>
+  <form method="post" action="/fl/earnings/confirm" id="confirm-form"><%- C %></form>
   <div class="table-wrap"><table class="table">
-    <thead><tr><th>Order</th><th>Vai trò</th><th>Khoản thu</th><th class="num">Cơ sở tính</th><th class="num">Tỷ lệ</th><th class="num">Phân công</th><th class="num">Số tiền</th><th>Trạng thái</th></tr></thead>
-    <tbody><% for (const c of lines) { %>
-      <tr><td><a class="mono" href="/orders/<%= c.order_id %>"><%= c.code %></a></td><td><%= L.ROLES[c.role]?.label || c.role %><% if (c.reason) { %><div class="small muted"><%= c.reason %></div><% } %></td>
+    <thead><tr><th><% if (waiting.length) { %><input type="checkbox" data-check-all="ids" aria-label="Chọn tất cả dòng chờ xác nhận"><% } %></th><th>Order</th><th>Vai trò</th><th>Khoản thu</th><th class="num">Cơ sở tính</th><th class="num">Tỷ lệ</th><th class="num">Phân công</th><th class="num">Số tiền</th><th>Trạng thái</th></tr></thead>
+    <tbody><% for (const c of lines) { const mine = c.status === 'PENDING_APPROVAL' && !c.user_confirmed_at && !c.objection; %>
+      <tr><td><% if (mine) { %><input type="checkbox" name="ids" value="<%= c.id %>" form="confirm-form" aria-label="Chọn dòng <%= c.code %> <%= c.role %>"><% } %></td>
+        <td><a class="mono" href="/orders/<%= c.order_id %>"><%= c.code %></a></td><td><%= L.ROLES[c.role]?.label || c.role %><% if (c.reason) { %><div class="small muted"><%= c.reason %></div><% } %></td>
         <td class="small"><%= L.PAYMENT_KIND[c.payment_kind] %> · <%= fmt.date(c.confirmed_at) %></td>
         <td class="num"><%= fmt.vnd(c.base_amount) %></td><td class="num"><%= fmt.pct(c.rate_bp) %></td><td class="num"><%= fmt.pct(c.share_bp) %></td>
-        <td class="num"><strong><%= fmt.vnd(c.amount) %></strong></td><td><%- badge(L.COMMISSION_STATUS, c.status) %></td></tr>
+        <td class="num"><strong><%= fmt.vnd(c.amount) %></strong></td>
+        <td><%- badge(L.COMMISSION_STATUS, c.status) %>
+          <% if (c.status === 'PENDING_APPROVAL') { %>
+            <div class="small muted" style="margin-top:4px">Bạn: <%= c.user_confirmed_at ? 'đã đồng ý' : c.objection ? 'không đồng ý' : 'chưa xác nhận' %> · M&amp;T: <%= c.approved_by ? 'đã duyệt' : 'chưa duyệt' %></div>
+            <% if (c.objection) { %><div class="small" style="color:var(--c-danger-fg)">Lý do: <%= c.objection %></div><% } %>
+            <% if (mine) { %><details style="margin-top:4px"><summary class="small" style="cursor:pointer">Không đồng ý</summary>
+              <form method="post" action="/fl/earnings/<%= c.id %>/object" style="margin-top:4px"><%- C %>
+                <input class="input" name="reason" required placeholder="VD: thiếu phần Project đợt 2" aria-label="Lý do không đồng ý" style="min-height:36px">
+                <button class="btn btn-danger btn-sm" style="margin-top:4px">Gửi M&amp;T</button></form></details><% } %>
+          <% } %></td></tr>
     <% } %></tbody>
-  </table></div><% } %>
+  </table></div>
+  <% if (waiting.length) { %><div style="padding: var(--sp-4) var(--sp-5)"><button class="btn btn-primary" form="confirm-form">Đồng ý các dòng đã chọn</button></div><% } %>
+  <% } %>
 </div>
 
 <div class="card flush">
-  <div class="card-head"><h2>Lịch sử chi trả</h2></div>
-  <% if (!payouts.length) { %><div class="empty"><p>Chưa có lần chi trả nào.</p></div><% } else { %>
+  <div class="card-head"><h2>Kỳ thanh toán</h2></div>
+  <% if (!payouts.length) { %><div class="empty"><p>Chưa có kỳ thanh toán nào.</p></div><% } else { %>
   <div class="table-wrap"><table class="table">
-    <thead><tr><th>Ngày</th><th>Mã giao dịch</th><th class="num">Số tiền</th></tr></thead>
-    <tbody><% for (const p of payouts) { %><tr><td><%= fmt.dateTime(p.paid_at) %></td><td class="mono"><%= p.ref %></td><td class="num"><strong><%= fmt.vnd(p.amount) %></strong></td></tr><% } %></tbody>
+    <thead><tr><th>Kỳ</th><th>Trạng thái</th><th>Ngày chi</th><th>Mã giao dịch</th><th class="num">Số tiền</th></tr></thead>
+    <tbody><% for (const p of payouts) { %><tr><td class="mono"><%= p.period || '—' %></td><td><%- badge(L.PAYOUT_STATUS, p.status) %></td><td><%= p.paid_at ? fmt.dateTime(p.paid_at) : '—' %></td><td class="mono"><%= p.ref || '—' %></td><td class="num"><strong><%= fmt.vnd(p.amount) %></strong></td></tr><% } %></tbody>
   </table></div><% } %>
 </div>
 <%- include('../partials/app-end') %>

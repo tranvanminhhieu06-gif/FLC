@@ -1,7 +1,7 @@
 'use strict';
 // Order, báo giá, hợp đồng, nhiệm vụ, bàn giao, nghiệm thu
 const db = require('../db');
-const { fail, audit, notify, notifyRole, notifyAdmins, nextCode } = require('./core');
+const { fail, audit, history, notify, notifyRole, notifyAdmins, nextCode } = require('./core');
 const flow = require('./orderFlow');
 const assignment = require('./assignment');
 const finance = require('./finance');
@@ -17,7 +17,7 @@ function create(customerId, data, submit) {
     );
     const id = r.lastInsertRowid;
     db.run('UPDATE orders SET code = ? WHERE id = ?', nextCode('ORD'), id);
-    db.run("INSERT INTO order_status_history (order_id, to_status, actor_id, note) VALUES (?, 'DRAFT', ?, 'Tạo bản nháp')", id, customerId);
+    history('order', id, { orderId: id, to: 'DRAFT', actorId: customerId, reason: 'Tạo bản nháp' });
     audit(customerId, 'order.create', 'order', id, { after: { title: data.title } });
     if (submit) submitOrder(id, customerId);
     return id;
@@ -104,8 +104,8 @@ function acceptQuote(quoteId, customerId, agreed) {
     );
     audit(customerId, 'contract.sign', 'order', o.id, { after: { value: q.amount, deposit } });
     flow.transition(o.id, 'CONTRACT_SIGNED', customerId, `Khách xác nhận báo giá v${q.version} và ký hợp đồng`);
-    flow.transition(o.id, 'AWAITING_DEPOSIT', customerId, 'Chờ đặt cọc');
-    if (deposit === 0) flow.transition(o.id, 'DEPOSITED', customerId, 'Hợp đồng không yêu cầu cọc');
+    flow.transition(o.id, 'AWAITING_DEPOSIT', customerId, 'Chờ đặt cọc', { auto: true, data: { deposit } });
+    if (deposit === 0) flow.transition(o.id, 'DEPOSITED', customerId, 'Hợp đồng không yêu cầu cọc', { auto: true });
   });
 }
 
@@ -117,6 +117,14 @@ function rejectQuote(quoteId, customerId, note) {
     if (q.status !== 'SENT') fail('Báo giá không còn hiệu lực');
     db.run("UPDATE quotes SET status = 'REJECTED', customer_note = ?, responded_at = datetime('now') WHERE id = ?", note, quoteId);
     flow.transition(o.id, 'REJECTED', customerId, note || 'Khách từ chối báo giá');
+  });
+}
+
+/** M&T từ chối cung cấp dịch vụ (trước khi ký hợp đồng) — chỉ M&T mở lại được */
+function rejectService(orderId, adminId, reason) {
+  db.tx(() => {
+    db.run("UPDATE quotes SET status = 'SUPERSEDED' WHERE order_id = ? AND status = 'SENT'", orderId);
+    flow.transition(orderId, 'REJECTED', adminId, reason ? `M&T từ chối cung cấp dịch vụ: ${reason}` : null);
   });
 }
 
@@ -146,6 +154,7 @@ function createTask(orderId, actor, { title, description, assignee_id, due_date 
   }
   const r = db.run('INSERT INTO tasks (order_id, title, description, assignee_id, due_date, created_by) VALUES (?, ?, ?, ?, ?, ?)',
     orderId, title, description, assignee_id || null, due_date || null, actor.id);
+  history('task', r.lastInsertRowid, { orderId, to: 'TODO', actorId: actor.id, reason: 'Giao nhiệm vụ', data: { title, assignee_id: assignee_id || null, due_date: due_date || null } });
   if (assignee_id) notify(assignee_id, `Nhiệm vụ mới: ${title}`, `/orders/${orderId}#tasks`);
   return r.lastInsertRowid;
 }
@@ -155,7 +164,11 @@ function setTaskStatus(taskId, actor, status) {
   if (!t) fail('Không tìm thấy nhiệm vụ', 404);
   if (t.assignee_id !== actor.id && !isReviewer(t.order_id, actor)) fail('Không có quyền cập nhật nhiệm vụ này', 403);
   if (status === 'DONE' && !isReviewer(t.order_id, actor)) fail('Chỉ PM/Account xác nhận hoàn thành');
-  db.run("UPDATE tasks SET status = ?, done_at = CASE WHEN ? = 'DONE' THEN datetime('now') ELSE NULL END WHERE id = ?", status, status, taskId);
+  if (t.status === status) return;
+  db.tx(() => {
+    db.run("UPDATE tasks SET status = ?, done_at = CASE WHEN ? = 'DONE' THEN datetime('now') ELSE NULL END WHERE id = ?", status, status, taskId);
+    history('task', taskId, { orderId: t.order_id, from: t.status, to: status, actorId: actor.id });
+  });
 }
 
 const WORKING = ['IN_PROGRESS', 'IN_REVIEW', 'DEMO', 'PREVIEW'];
@@ -172,7 +185,11 @@ function submitDeliverable(orderId, actor, { kind, title, note, task_id }, file)
       'INSERT INTO deliverables (order_id, task_id, version, kind, title, note, file_path, file_name, submitted_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
       orderId, task_id || null, version, kind, title || file.name, note, file.path, file.name, actor.id,
     );
-    if (task_id) db.run("UPDATE tasks SET status = 'SUBMITTED' WHERE id = ? AND assignee_id = ?", task_id, actor.id);
+    const task = task_id && db.get('SELECT * FROM tasks WHERE id = ? AND order_id = ? AND assignee_id = ?', task_id, orderId, actor.id);
+    if (task && task.status !== 'SUBMITTED') {
+      db.run("UPDATE tasks SET status = 'SUBMITTED' WHERE id = ?", task.id);
+      history('task', task.id, { orderId, from: task.status, to: 'SUBMITTED', actorId: actor.id, reason: `Nộp ${kind} v${version}`, data: { deliverable_id: r.lastInsertRowid } });
+    }
     if (o.status !== 'IN_REVIEW') flow.transition(orderId, 'IN_REVIEW', actor.id, `Nộp ${kind} v${version}`);
     return r.lastInsertRowid;
   });
@@ -277,7 +294,7 @@ function raiseDispute(orderId, userId, { kind, title, body }, file) {
 }
 
 module.exports = {
-  create, update, submitOrder, addAttachment, createQuote, acceptQuote, rejectQuote, depositException,
+  create, update, submitOrder, addAttachment, createQuote, acceptQuote, rejectQuote, rejectService, depositException,
   isReviewer, createTask, setTaskStatus, submitDeliverable, reviewDeliverable, customerDecision, signOff,
   postMessage, raiseDispute, resolveDispute,
 };

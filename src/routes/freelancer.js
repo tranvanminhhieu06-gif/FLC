@@ -24,7 +24,7 @@ router.get('/', (req, res) => {
   const invitations = db.get("SELECT COUNT(*) AS n FROM order_assignments a JOIN orders o ON o.id = a.order_id WHERE a.user_id = ? AND a.status = 'INVITED' AND o.status = 'MATCHING'", u.id).n;
   const earn = db.get(
     `SELECT COALESCE(SUM(CASE WHEN status = 'PENDING_APPROVAL' THEN amount END), 0) AS pending,
-            COALESCE(SUM(CASE WHEN status = 'APPROVED' THEN amount END), 0) AS approved,
+            COALESCE(SUM(CASE WHEN status IN ('APPROVED', 'PAYABLE') THEN amount END), 0) AS approved,
             COALESCE(SUM(CASE WHEN status = 'PAID' THEN amount END), 0) AS paid
        FROM commissions WHERE user_id = ?`, u.id,
   );
@@ -83,6 +83,16 @@ router.get('/earnings', (req, res) => {
   const payouts = db.all('SELECT * FROM payouts WHERE user_id = ? ORDER BY id DESC', req.user.id);
   res.render('freelancer/earnings', { title: 'Sổ hoa hồng', lines, payouts });
 });
+router.post('/earnings/confirm', requireActive, act((req) => {
+  const ids = [].concat(req.body.ids || []).map(Number).filter(Boolean);
+  if (!ids.length) fail('Chọn ít nhất một dòng');
+  commission.confirmByUser({ ids, userId: req.user.id });
+  return '/fl/earnings';
+}, 'Đã xác nhận số tiền hoa hồng'));
+router.post('/earnings/:id/object', requireActive, act((req) => {
+  commission.objectByUser({ id: Number(req.params.id), userId: req.user.id, reason: req.body.reason });
+  return '/fl/earnings';
+}, 'Đã gửi ý kiến không đồng ý cho M&T'));
 
 /** Doanh thu & dự án đã nhận + bộ tính tự động (form GET hoạt động cả khi tắt JS) */
 router.get('/revenue', (req, res) => {
