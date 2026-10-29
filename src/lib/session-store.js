@@ -2,6 +2,9 @@
 const session = require('express-session');
 const db = require('../db');
 
+// Phiên không "ghi nhớ" (cookie hết khi đóng trình duyệt) vẫn bị xóa phía server nếu bỏ không quá thời gian này
+const IDLE_TTL = 12 * 3600 * 1000;
+
 /** Lưu phiên đăng nhập vào SQLite (bảng sessions) */
 class SqliteStore extends session.Store {
   constructor() {
@@ -17,7 +20,7 @@ class SqliteStore extends session.Store {
   }
   set(sid, sess, cb) {
     try {
-      const expires = sess.cookie?.expires ? new Date(sess.cookie.expires).getTime() : Date.now() + 86400000;
+      const expires = sess.cookie?.expires ? new Date(sess.cookie.expires).getTime() : Date.now() + IDLE_TTL;
       db.run(
         'INSERT INTO sessions (sid, sess, expires) VALUES (?, ?, ?) ON CONFLICT(sid) DO UPDATE SET sess = excluded.sess, expires = excluded.expires',
         sid, JSON.stringify(sess), expires,

@@ -14,6 +14,7 @@ CREATE TABLE IF NOT EXISTS users (
   phone         TEXT UNIQUE,
   password_hash TEXT NOT NULL,
   full_name     TEXT,
+  avatar_file   TEXT,                       -- ảnh đại diện trong storage/private
   status        TEXT NOT NULL DEFAULT 'PENDING'
                 CHECK (status IN ('PENDING', 'NEEDS_INFO', 'ACTIVE', 'REJECTED', 'SUSPENDED')),
   status_note   TEXT,

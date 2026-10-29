@@ -28,6 +28,27 @@ document.addEventListener('change', (e) => {
   if (e.target.matches('[data-check-all]')) {
     document.querySelectorAll(`input[name="${e.target.dataset.checkAll}"]`).forEach((c) => { c.checked = e.target.checked; });
   }
+  // Xem trước ảnh đại diện trước khi lưu (data: URL vì CSP chỉ cho img-src 'self' data:)
+  if (e.target.matches('[data-avatar-input]')) {
+    const input = e.target;
+    const file = input.files[0];
+    const name = input.form.querySelector('[data-avatar-name]');
+    if (!file) return;
+    if (file.size > 2 * 1024 * 1024) {
+      input.value = '';
+      if (name) name.textContent = 'Ảnh vượt quá 2MB — hãy chọn ảnh nhỏ hơn';
+      return;
+    }
+    if (name) name.textContent = file.name;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const img = document.createElement('img');
+      img.src = reader.result;
+      img.alt = '';
+      document.getElementById(input.dataset.avatarInput)?.replaceChildren(img);
+    };
+    reader.readAsDataURL(file);
+  }
 });
 
 // Hiển thị số tiền có dấu chấm khi nhập

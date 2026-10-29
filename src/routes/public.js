@@ -27,18 +27,23 @@ router.get('/login', (req, res) => {
   res.render('public/login', { title: 'Đăng nhập · FLC', next: safeNext(req.query.next), identifier: '' });
 });
 
+const REMEMBER_MS = 30 * 24 * 3600 * 1000;
+
 router.post('/login', (req, res, next) => {
   const user = accounts.login(req.body.identifier, req.body.password);
   if (!user) {
     return res.status(401).render('public/login', {
       title: 'Đăng nhập · FLC', next: safeNext(req.body.next), identifier: req.body.identifier || '',
-      error: 'Thông tin đăng nhập không đúng',
+      error: 'Thông tin đăng nhập không đúng', remember: req.body.remember === '1',
     });
   }
+  const remember = req.body.remember === '1';
   req.session.regenerate((err) => {
     if (err) return next(err);
     req.session.uid = user.id;
-    audit(user.id, 'user.login', 'user', user.id);
+    // Ghi nhớ: cookie sống 30 ngày (gia hạn mỗi lần dùng). Không ghi nhớ: cookie mất khi đóng trình duyệt.
+    req.session.cookie.maxAge = remember ? REMEMBER_MS : null;
+    audit(user.id, 'user.login', 'user', user.id, { after: { remember } });
     res.redirect(safeNext(req.body.next) || home(user));
   });
 });

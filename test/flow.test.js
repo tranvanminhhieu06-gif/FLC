@@ -267,3 +267,37 @@ test('lịch sử trạng thái: đánh dấu bước tự động, chỉ thêm 
   assert.throws(() => db.run("UPDATE status_history SET reason = 'sửa'"), /chỉ cho phép thêm/);
   assert.throws(() => db.run('DELETE FROM status_history'), /chỉ cho phép thêm/);
 });
+
+test('trang chủ: bảng tin không lộ Order nháp/hủy; xếp hạng đếm mỗi Order hoàn tất một lần', () => {
+  const board = require('../src/services/board');
+  const draft = newOrder();
+  const feed = Object.keys(board.GROUPS).flatMap((group) => board.postedOrders({ group, viewerId: prj.id, limit: 1000 }));
+  assert.ok(!feed.some((o) => o.id === draft), 'bản nháp không hiện');
+  assert.ok(!feed.some((o) => ['CANCELLED', 'REJECTED', 'DRAFT'].includes(o.status)));
+  assert.ok(!feed.length || !('customer_id' in feed[0]) && !('description' in feed[0]), 'không trả thông tin khách / mô tả');
+  const done = db.get(
+    "SELECT COUNT(DISTINCT a.order_id) AS n FROM order_assignments a JOIN orders o ON o.id = a.order_id WHERE a.user_id = ? AND a.status = 'LOCKED' AND o.status IN ('COMPLETED','CLOSED')", prj.id,
+  ).n;
+  const { top, me } = board.leaderboard(prj.id);
+  assert.ok(done > 0);
+  assert.equal(me.completed, done);
+  assert.ok(top.every((m, i) => i === 0 || top[i - 1].completed >= m.completed), 'sắp xếp giảm dần');
+  assert.ok(top.every((m) => m.completed > 0));
+});
+
+test('ảnh đại diện: chỉ nhận ảnh thật, thay ảnh thì xóa tệp cũ, ai đăng nhập cũng xem được', () => {
+  const PNG = Buffer.from('89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000d4944415478da63f8cfc0f01f0005000201a3a1c7a80000000049454e44ae426082', 'hex');
+  const put = (name, buf) => { fs.writeFileSync(path.join(files.ROOT, name), buf); return name; };
+  assert.throws(() => accounts.setAvatar(prj.id, put('fake.png', '<svg onload=alert(1)>')), /không hợp lệ/, 'đuôi .png nhưng nội dung không phải ảnh');
+  const first = put('a1.png', PNG);
+  accounts.setAvatar(prj.id, first);
+  const viewer = db.get('SELECT * FROM users WHERE id = ?', cus);
+  assert.equal(files.resolve(viewer, 'avatar', prj.id).file, first);
+  accounts.setAvatar(prj.id, put('a2.png', PNG));
+  return new Promise((done) => setTimeout(() => {
+    assert.equal(fs.existsSync(files.absolute(first)), false, 'tệp cũ đã bị xóa');
+    accounts.setAvatar(prj.id, null);
+    assert.equal(files.resolve(viewer, 'avatar', prj.id), null);
+    done();
+  }, 50));
+});

@@ -56,7 +56,7 @@ Dữ liệu demo có sẵn các Order ở các giai đoạn khác nhau:
 | `npm run dev` | Chạy và tự khởi động lại khi sửa code (`node --watch`) |
 | `npm run seed -- --reset` | Xóa CSDL và tệp đã tải lên, rồi tạo lại dữ liệu demo |
 | `FLC_NEW_PASSWORD='…' node scripts/create-user.js --kind admin\|freelancer\|customer --email … --name "…" [--member … --roles PROJECT --dev]` | Tạo tài khoản đã duyệt sẵn. Mật khẩu lấy từ biến môi trường, không ghi vào mã nguồn. `--dev` đặt người đó nhận phần Coder web |
-| `npm test` | 23 bài kiểm thử: thuật toán hoa hồng, doanh thu thuần, bảng tỷ lệ, quyền chuyển trạng thái và các quy tắc hệ thống |
+| `npm test` | 24 bài kiểm thử: thuật toán hoa hồng, doanh thu thuần, bảng tỷ lệ, quyền chuyển trạng thái và các quy tắc hệ thống |
 
 ## Cấu trúc
 
@@ -73,6 +73,7 @@ src/
     finance.js         Khai báo / xác nhận thực thu, hoàn tiền, tự chuyển bước theo tiền
     commission.js      Đối soát, hai bên duyệt hoa hồng, kỳ thanh toán, chi trả, tỷ lệ, người nhận Coder web
     revenue.js         Doanh thu & thu nhập theo từng dự án của freelancer
+    board.js           Trang chủ freelancer: bảng tin Order đã đăng + xếp hạng thành viên theo dự án hoàn thành
     access.js          Ai được xem Order nào, phần nào
     files.js           Upload vào storage/private + quyền tải (file gốc / demo / CCCD)
     accounts.js        Đăng ký, đăng nhập, M&T duyệt tài khoản & vai trò
@@ -120,6 +121,7 @@ test/                  node:test
 
 - Mật khẩu băm bằng `scrypt` kèm salt riêng cho từng tài khoản.
 - Phiên đăng nhập lưu trong SQLite, cookie `httpOnly` + `SameSite=Lax` (thêm `Secure` khi chạy production). Phiên được tạo lại sau khi đăng nhập.
+- **Ghi nhớ đăng nhập:** nếu chọn, cookie sống 30 ngày và được gia hạn sau mỗi lần dùng. Nếu không chọn, đóng trình duyệt là đăng xuất, và phiên bỏ không quá 12 giờ cũng bị xóa phía server.
 - CSRF token cho mọi POST. Form multipart gửi token qua query `?_csrf=`.
 - CSP chặn mọi script ngoài và script inline. Có thêm `X-Frame-Options`, `nosniff`.
 - Tệp tải lên được đổi sang tên ngẫu nhiên, lưu ngoài thư mục public. Ảnh CCCD chỉ nhận định dạng ảnh, giới hạn 25MB mỗi tệp.

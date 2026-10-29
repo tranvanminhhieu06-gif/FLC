@@ -1,0 +1,4 @@
+<%#
+  Ảnh đại diện tròn: { person: { id, full_name, avatar_file }, size: px, id?: id của thẻ (để JS xem trước) }
+  Chưa có ảnh → chữ cái đầu của tên gọi (từ cuối trong họ tên tiếng Việt)
+%><% const words = String(person.full_name || '?').trim().split(/\s+/); const initial = (words[words.length - 1] || '?').charAt(0).toUpperCase(); %><span class="avatar" style="--size:<%= size || 32 %>px"<%- locals.id ? ` id="${id}"` : '' %> aria-hidden="true"><% if (person.avatar_file) { %><img src="/files/avatar/<%= person.id %>?v=<%= person.avatar_file.slice(0, 8) %>" alt="" loading="lazy" width="<%= size || 32 %>" height="<%= size || 32 %>"><% } else { %><span><%= initial %></span><% } %></span>

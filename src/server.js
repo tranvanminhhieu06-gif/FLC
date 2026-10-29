@@ -31,7 +31,9 @@ app.use(session({
   secret: process.env.SESSION_SECRET || 'flc-dev-secret-change-me',
   resave: false,
   saveUninitialized: false,
-  cookie: { httpOnly: true, sameSite: 'lax', secure: PROD, maxAge: 7 * 24 * 3600 * 1000 },
+  rolling: true, // gia hạn cookie "ghi nhớ" sau mỗi lần dùng (30 ngày tính từ lần truy cập cuối)
+  // Mặc định là cookie phiên: đóng trình duyệt là đăng xuất. Chọn "Ghi nhớ đăng nhập" thì đặt maxAge (routes/public.js)
+  cookie: { httpOnly: true, sameSite: 'lax', secure: PROD },
 }));
 app.use(loadUser);
 app.use(csrf);

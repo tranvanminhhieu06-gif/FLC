@@ -15,6 +15,10 @@
         <label for="password">Mật khẩu</label>
         <input class="input" id="password" name="password" type="password" autocomplete="current-password" required>
       </div>
+      <div class="field">
+        <label class="check" style="border:0; background:transparent; padding:0"><input type="checkbox" name="remember" value="1" <%- locals.remember ? 'checked' : '' %> aria-describedby="remember-hint"> Ghi nhớ đăng nhập</label>
+        <p class="small muted" id="remember-hint" style="margin:2px 0 0">Giữ đăng nhập 30 ngày trên trình duyệt này. Không chọn nếu dùng máy chung.</p>
+      </div>
       <button class="btn btn-primary btn-block" type="submit">Đăng nhập</button>
     </form>
     <p class="small muted" style="margin-top: var(--sp-4)">Chưa có tài khoản? <a href="/register">Đăng ký</a></p>

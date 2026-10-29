@@ -1,19 +1,39 @@
 <%- include('../partials/app-start') %>
-<div class="page-head"><div><h1>Hồ sơ năng lực</h1><p class="muted"><span class="mono"><%= user.code %></span> · mã thành viên <span class="mono"><%= profile.member_code %></span> · <%- badge(L.ACCOUNT_STATUS, user.status) %></p></div></div>
+<div class="page-head"><div class="row" style="gap: var(--sp-4); align-items: center"><%- include('../partials/avatar', { person: user, size: 64 }) %><div><h1>Hồ sơ năng lực</h1><p class="muted"><span class="mono"><%= user.code %></span> · mã thành viên <span class="mono"><%= profile.member_code %></span> · <%- badge(L.ACCOUNT_STATUS, user.status) %></p></div></div></div>
 <div class="split">
-  <form class="card" method="post" action="/fl/profile">
-    <input type="hidden" name="_csrf" value="<%= csrf() %>">
-    <div class="field">
-      <label for="f_availability">Mức độ sẵn sàng</label>
-      <select class="select" id="f_availability" name="availability">
-        <% for (const [k, t] of Object.entries({ AVAILABLE: 'Sẵn sàng nhận việc', BUSY: 'Đang bận, nhận thêm ít', AWAY: 'Tạm nghỉ' })) { %><option value="<%= k %>" <%- profile.availability === k ? 'selected' : '' %>><%= t %></option><% } %>
-      </select>
+  <div class="stack">
+    <div class="card" id="avatar">
+      <h3>Ảnh đại diện</h3>
+      <div class="avatar-frame">
+        <%- include('../partials/avatar', { person: user, size: 112, id: 'avatar-preview' }) %>
+        <div class="stack" style="gap: var(--sp-2); min-width: 0">
+          <form method="post" action="/fl/profile/avatar?_csrf=<%= csrf() %>" enctype="multipart/form-data" class="stack" style="gap: var(--sp-2)">
+            <label class="btn btn-secondary btn-sm" for="f_avatar" style="cursor:pointer"><%- icon('upload') %>Chọn ảnh</label>
+            <input class="sr-only" id="f_avatar" type="file" name="avatar" accept="image/png,image/jpeg,image/webp" required data-avatar-input="avatar-preview" aria-describedby="avatar-hint">
+            <span class="small muted" data-avatar-name></span>
+            <button class="btn btn-primary btn-sm">Lưu ảnh</button>
+          </form>
+          <% if (user.avatar_file) { %>
+            <form method="post" action="/fl/profile/avatar/remove"><input type="hidden" name="_csrf" value="<%= csrf() %>"><button class="btn btn-ghost btn-sm" data-confirm="Xóa ảnh đại diện?"><%- icon('x') %>Xóa ảnh</button></form>
+          <% } %>
+        </div>
+      </div>
+      <p class="small muted" id="avatar-hint" style="margin: var(--sp-3) 0 0">PNG, JPG hoặc WebP, tối đa 2MB. Nên dùng ảnh vuông, rõ mặt. Ảnh hiển thị cho thành viên FLC trên bảng xếp hạng.</p>
     </div>
-    <%- include('../partials/field', { name: 'skills', label: 'Kỹ năng', value: profile.skills }) %>
-    <%- include('../partials/field', { name: 'experience', label: 'Kinh nghiệm', type: 'textarea', value: profile.experience }) %>
-    <%- include('../partials/field', { name: 'portfolio', label: 'Sản phẩm đã từng làm', type: 'textarea', value: profile.portfolio }) %>
-    <button class="btn btn-primary"><%= user.status === 'NEEDS_INFO' ? 'Gửi bổ sung cho M&T' : 'Lưu hồ sơ' %></button>
-  </form>
+    <form class="card" method="post" action="/fl/profile">
+      <input type="hidden" name="_csrf" value="<%= csrf() %>">
+      <div class="field">
+        <label for="f_availability">Mức độ sẵn sàng</label>
+        <select class="select" id="f_availability" name="availability">
+          <% for (const [k, t] of Object.entries({ AVAILABLE: 'Sẵn sàng nhận việc', BUSY: 'Đang bận, nhận thêm ít', AWAY: 'Tạm nghỉ' })) { %><option value="<%= k %>" <%- profile.availability === k ? 'selected' : '' %>><%= t %></option><% } %>
+        </select>
+      </div>
+      <%- include('../partials/field', { name: 'skills', label: 'Kỹ năng', value: profile.skills }) %>
+      <%- include('../partials/field', { name: 'experience', label: 'Kinh nghiệm', type: 'textarea', value: profile.experience }) %>
+      <%- include('../partials/field', { name: 'portfolio', label: 'Sản phẩm đã từng làm', type: 'textarea', value: profile.portfolio }) %>
+      <button class="btn btn-primary"><%= user.status === 'NEEDS_INFO' ? 'Gửi bổ sung cho M&T' : 'Lưu hồ sơ' %></button>
+    </form>
+  </div>
   <div class="stack">
     <div class="card">
       <h3>Vai trò</h3>

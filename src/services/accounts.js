@@ -139,4 +139,14 @@ function requestRole(userId, role) {
   notifyAdmins(`Freelancer xin thêm vai trò ${role}`, `/admin/accounts/${userId}`);
 }
 
-module.exports = { registerCustomer, registerFreelancer, login, review, requestRole, normEmail, normPhone };
+/** Đặt (stored = tên tệp đã lưu) hoặc xóa (null) ảnh đại diện. Tệp cũ bị xóa khỏi kho sau khi ghi CSDL. */
+function setAvatar(userId, stored) {
+  const files = require('./files');
+  if (stored && !files.isImage(stored)) fail('Ảnh không hợp lệ — chỉ nhận PNG, JPG hoặc WebP');
+  const before = db.get('SELECT avatar_file FROM users WHERE id = ?', userId)?.avatar_file;
+  db.run('UPDATE users SET avatar_file = ? WHERE id = ?', stored, userId);
+  audit(userId, stored ? 'user.avatar_set' : 'user.avatar_remove', 'user', userId);
+  if (before && before !== stored) require('node:fs').unlink(files.absolute(before), () => {});
+}
+
+module.exports = { registerCustomer, registerFreelancer, login, review, requestRole, setAvatar, normEmail, normPhone };

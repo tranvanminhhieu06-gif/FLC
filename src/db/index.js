@@ -27,6 +27,7 @@ function migrate() {
   }
 
   const steps = [];
+  if (!columns('users').includes('avatar_file')) steps.push(() => db.exec('ALTER TABLE users ADD COLUMN avatar_file TEXT;'));
   if (!tableSql('revenue_allocations').includes("'DEV'")) steps.push(() => rebuild('revenue_allocations'));
   if (columns('payments').includes('rejected')) {
     steps.push(() => rebuild('payments', `UPDATE payments SET status = (SELECT CASE WHEN o.rejected = 1 THEN 'REJECTED' WHEN o.reconciled = 1 THEN 'RECONCILED'

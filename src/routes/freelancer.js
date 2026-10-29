@@ -4,9 +4,12 @@ const db = require('../db');
 const assignment = require('../services/assignment');
 const commission = require('../services/commission');
 const accounts = require('../services/accounts');
+const files = require('../services/files');
 const revenue = require('../services/revenue');
+const board = require('../services/board');
+const access = require('../services/access');
 const fmt = require('../lib/fmt');
-const { DEFAULT_VAT_PCT } = require('../lib/labels');
+const { DEFAULT_VAT_PCT, SERVICE_TYPES } = require('../lib/labels');
 const { fail, notifyAdmins } = require('../services/core');
 const { requireKind, requireActive, act } = require('../middleware');
 
@@ -33,6 +36,19 @@ router.get('/', (req, res) => {
     "SELECT t.*, o.code FROM tasks t JOIN orders o ON o.id = t.order_id WHERE t.assignee_id = ? AND t.status <> 'DONE' AND o.status NOT IN ('CLOSED','CANCELLED') ORDER BY t.due_date IS NULL, t.due_date LIMIT 8", u.id,
   );
   res.render('freelancer/dashboard', { title: 'Tổng quan · Freelancer', myOrders, invitations, earn, estimate, tasks });
+});
+
+/** Trang chủ: Order khách đã đăng + bảng xếp hạng thành viên theo số dự án hoàn thành */
+router.get('/home', requireActive, (req, res) => {
+  const group = board.GROUPS[req.query.group] ? req.query.group : 'open';
+  const service = SERVICE_TYPES.includes(req.query.service) ? req.query.service : null;
+  // Chỉ gắn liên kết tới trang Order khi người xem có quyền mở (tham gia, được mời hoặc nhận được)
+  const orders = board.postedOrders({ group, service, viewerId: req.user.id })
+    .map((o) => ({ ...o, canOpen: access.forOrder(req.user, o.id).any }));
+  res.render('freelancer/home', {
+    title: 'Trang chủ', group, service, orders, counts: board.groupCounts(), groups: board.GROUPS,
+    services: SERVICE_TYPES, ranking: board.leaderboard(req.user.id),
+  });
 });
 
 router.get('/opportunities', requireActive, (req, res) => {
@@ -164,6 +180,18 @@ router.post('/profile', act((req) => {
   }
   return '/fl/profile';
 }, 'Đã cập nhật hồ sơ'));
+
+// Ảnh đại diện (multipart: CSRF đi qua query). Giới hạn 2MB, chỉ PNG/JPG/WebP.
+router.post('/profile/avatar', files.receive(['avatar'], { imagesOnly: ['avatar'], maxMB: 2 }), act((req) => {
+  const f = files.pick(req, 'avatar');
+  if (!f) fail('Chọn một ảnh để tải lên');
+  accounts.setAvatar(req.user.id, f.path);
+  return '/fl/profile';
+}, 'Đã cập nhật ảnh đại diện'));
+router.post('/profile/avatar/remove', act((req) => {
+  accounts.setAvatar(req.user.id, null);
+  return '/fl/profile';
+}, 'Đã xóa ảnh đại diện'));
 
 router.post('/roles', requireActive, act((req) => {
   accounts.requestRole(req.user.id, req.body.role);

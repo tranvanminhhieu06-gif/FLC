@@ -21,7 +21,10 @@
       ]},
     ];
   } else if (user.kind === 'freelancer') {
-    const items = [{ href: '/fl', icon: 'home', text: 'Tổng quan', exact: true }];
+    const items = [
+      { href: '/fl/home', icon: 'home', text: 'Trang chủ' },
+      { href: '/fl', icon: 'briefcase', text: 'Tổng quan', exact: true },
+    ];
     if (r.has('SALES') || r.has('ACCOUNT')) items.push({ href: '/fl/opportunities', icon: 'target', text: 'Cơ hội' });
     if (r.size) items.push({ href: '/fl/invitations', icon: 'inbox', text: 'Lời mời' });
     if (r.has('REFERRER')) items.push({ href: '/fl/referrals', icon: 'link', text: 'Giới thiệu' });
@@ -65,7 +68,7 @@
       <button class="btn btn-secondary btn-sm menu-toggle" type="button" data-toggle-nav aria-controls="sidebar" aria-expanded="false"><%- icon('menu') %><span class="sr-only">Mở menu</span></button>
       <div class="small muted"><% if (user.kind === 'freelancer' && user.roles.length) { %>Vai trò: <% for (const role of user.roles) { %><span class="tag"><%= L.ROLES[role].label %></span> <% } %><% } %></div>
       <div class="row">
-        <span class="small"><strong><%= user.full_name || user.email || user.phone %></strong> <span class="muted mono"><%= user.code %></span></span>
+        <span class="row small" style="gap: var(--sp-2)"><%- include('avatar', { person: user, size: 28 }) %><span><strong><%= user.full_name || user.email || user.phone %></strong> <span class="muted mono"><%= user.code %></span></span></span>
         <form method="post" action="/logout"><input type="hidden" name="_csrf" value="<%= csrf() %>"><button class="btn btn-ghost btn-sm" type="submit"><%- icon('logout') %>Đăng xuất</button></form>
       </div>
     </header>
