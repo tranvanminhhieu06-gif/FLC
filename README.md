@@ -127,11 +127,21 @@ test/                  node:test
 - Tệp tải lên được đổi sang tên ngẫu nhiên, lưu ngoài thư mục public. Ảnh CCCD chỉ nhận định dạng ảnh, giới hạn 25MB mỗi tệp.
 - Mọi truy vấn SQL đều tham số hóa.
 
+## Đưa lên mạng bằng Render
+
+GitHub Pages chỉ phục vụ file tĩnh nên không chạy được FLC (cần Node, SQLite, phiên đăng nhập). Repo có sẵn [render.yaml](render.yaml) để chạy trên Render:
+
+1. Đăng nhập [render.com](https://render.com) bằng GitHub, chọn **New → Blueprint** và trỏ tới repo này (hoặc mở `https://render.com/deploy?repo=https://github.com/tranvanminhhieu06-gif/FLC`).
+2. Render hỏi hai biến: `FLC_ADMIN_EMAIL` và `FLC_ADMIN_PASSWORD` (tối thiểu 8 ký tự, gồm chữ và số). Lần khởi động đầu, [scripts/bootstrap-admin.js](scripts/bootstrap-admin.js) tạo Admin từ hai biến này. CSDL bắt đầu trống, không có dữ liệu demo. `SESSION_SECRET` do Render tự sinh.
+3. Mỗi lần push lên `main`, Render tự deploy lại.
+
+Giới hạn gói free: dịch vụ ngủ sau 15 phút không có truy cập (lần mở đầu chờ khoảng 30 giây), và **ổ đĩa không lưu lâu dài**: CSDL và tệp tải lên mất khi deploy lại hoặc khởi động lại, Admin được tạo lại từ biến môi trường. Muốn giữ dữ liệu, nâng gói có Persistent Disk, gắn ổ vào `/var/data` rồi đặt `FLC_DB=/var/data/flc.db` và `FLC_STORAGE=/var/data/storage`.
+
 ## Triển khai production
 
 1. Đặt biến môi trường: `NODE_ENV=production`, `SESSION_SECRET` (chuỗi ngẫu nhiên dài), `PORT`. Tùy chọn thêm `FLC_DB` (đường dẫn tệp CSDL) và `FLC_STORAGE` (thư mục lưu tệp).
 2. Chạy sau một reverse proxy có HTTPS (Nginx hoặc Caddy). App đã bật `trust proxy`.
-3. Tạo tài khoản Admin đầu tiên bằng `scripts/create-user.js --kind admin` (không chạy seed trên production).
+3. Tạo tài khoản Admin đầu tiên bằng `scripts/create-user.js --kind admin`, hoặc đặt `FLC_ADMIN_EMAIL` và `FLC_ADMIN_PASSWORD` rồi chạy `node scripts/bootstrap-admin.js` trước khi khởi động. Không chạy seed trên production: mật khẩu demo nằm công khai trong repo.
 4. Sao lưu định kỳ hai thư mục `data/` và `storage/private/`.
 5. Khi tải lớn hơn: chuyển sang PostgreSQL (schema đã viết theo chuẩn, xem ghi chú đầu `schema.sql` và `reports.js`), chuyển tệp sang S3/R2. Chi tiết ở [docs/SYSTEM_DESIGN.md §7](docs/SYSTEM_DESIGN.md).
 

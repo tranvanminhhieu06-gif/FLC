@@ -1,0 +1,25 @@
+# Render Blueprint — tạo dịch vụ web FLC từ repo này (xem README, mục "Đưa lên mạng bằng Render")
+services:
+  - type: web
+    name: flc
+    runtime: node
+    plan: free
+    region: singapore
+    buildCommand: npm ci
+    startCommand: node scripts/bootstrap-admin.js && npm start
+    healthCheckPath: /login
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NODE_VERSION
+        value: "24"
+      - key: SESSION_SECRET
+        generateValue: true
+      # Nhập trên Render khi tạo dịch vụ; không ghi vào repo
+      - key: FLC_ADMIN_EMAIL
+        sync: false
+      - key: FLC_ADMIN_PASSWORD
+        sync: false
+      - key: FLC_ADMIN_NAME
+        value: M&T Admin
